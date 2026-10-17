@@ -9,30 +9,29 @@ Phần mềm mã nguồn mở giúp một đơn vị có nhiều kho theo dõi s
 ## Thành viên
 
 | Họ tên | MSSV | Phụ trách |
-|---|---|---|
-| _(cập nhật)_ | | |
-| _(cập nhật)_ | | |
-| _(cập nhật)_ | | |
+| ------ | ---- | --------- |
+| \_\_   |      |           |
+| \_\_   |      |           |
 
 ## Người sử dụng
 
-| Vai trò | Quyền |
-|---|---|
-| Nhân viên kho | Lập phiếu nhập, xuất, điều chuyển tại kho mình phụ trách; tra cứu tồn và lịch sử |
-| Người duyệt chứng từ | Xác nhận chứng từ chờ duyệt; khi xác nhận, sổ phát sinh mới được ghi |
-| Người phụ trách kiểm kê | Tạo đợt kiểm kê, nhập số thực tế, xác nhận chênh lệch kèm lý do |
+| Vai trò                 | Quyền                                                                            |
+| ----------------------- | -------------------------------------------------------------------------------- |
+| Nhân viên kho           | Lập phiếu nhập, xuất, điều chuyển tại kho mình phụ trách; tra cứu tồn và lịch sử |
+| Người duyệt chứng từ    | Xác nhận chứng từ chờ duyệt; khi xác nhận, sổ phát sinh mới được ghi             |
+| Người phụ trách kiểm kê | Tạo đợt kiểm kê, nhập số thực tế, xác nhận chênh lệch kèm lý do                  |
 
 Mỗi tài khoản chỉ thao tác trên **các kho được phân quyền**. Quyền được kiểm tra phía máy chủ ở từng yêu cầu, không chỉ ẩn nút trên giao diện.
 
 ## Chức năng
 
-| # | Chức năng | Trang | Trạng thái |
-|---|---|---|---|
-| 1 | Quản lý kho, mặt hàng, đơn vị tính, lô hàng và quyền theo kho | `/warehouses.php`, `/items.php` | Giao diện ✔ · CSDL ⏳ |
-| 2 | Lập, kiểm tra, xác nhận phiếu nhập/xuất; tra cứu tồn từ dòng phát sinh | `/voucher-new.php`, `/voucher.php`, `/stock.php` | Giao diện ✔ · CSDL ⏳ |
-| 3 | Điều chuyển giữa hai kho, có chứng từ ở cả nơi đi và nơi đến | `/voucher-new.php?type=transfer` | Giao diện ✔ · CSDL ⏳ |
-| 4 | Tạo đợt kiểm kê, nhập số thực tế, tính chênh lệch, lập chứng từ điều chỉnh có lý do | `/counts.php`, `/count.php` | Giao diện ✔ · CSDL ⏳ |
-| 5 | Lịch sử hàng, đối chiếu tồn, xuất báo cáo CSV; sửa bằng chứng từ điều chỉnh, không xóa lịch sử | `/history.php`, `/export.php` | Giao diện ✔ · CSDL ⏳ |
+| #   | Chức năng                                                                                      | Trang                                            | Trạng thái            |
+| --- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------ | --------------------- |
+| 1   | Quản lý kho, mặt hàng, đơn vị tính, lô hàng và quyền theo kho                                  | `/warehouses.php`, `/items.php`                  | Giao diện ✔ · CSDL ⏳ |
+| 2   | Lập, kiểm tra, xác nhận phiếu nhập/xuất; tra cứu tồn từ dòng phát sinh                         | `/voucher-new.php`, `/voucher.php`, `/stock.php` | Giao diện ✔ · CSDL ⏳ |
+| 3   | Điều chuyển giữa hai kho, có chứng từ ở cả nơi đi và nơi đến                                   | `/voucher-new.php?type=transfer`                 | Giao diện ✔ · CSDL ⏳ |
+| 4   | Tạo đợt kiểm kê, nhập số thực tế, tính chênh lệch, lập chứng từ điều chỉnh có lý do            | `/counts.php`, `/count.php`                      | Giao diện ✔ · CSDL ⏳ |
+| 5   | Lịch sử hàng, đối chiếu tồn, xuất báo cáo CSV; sửa bằng chứng từ điều chỉnh, không xóa lịch sử | `/history.php`, `/export.php`                    | Giao diện ✔ · CSDL ⏳ |
 
 ### Hai yêu cầu kỹ thuật
 
@@ -59,16 +58,16 @@ bash app.sh run                   # chạy tại http://127.0.0.1:8110
 
 Trang đăng nhập cho chọn một trong bốn tài khoản giả (giai đoạn giao diện chưa dùng mật khẩu):
 
-| Tài khoản | Vai trò | Kho |
-|---|---|---|
-| `nv.hn`, Nguyễn Văn An | Nhân viên kho | KHO-HN |
-| `nv.dn`, Trần Thị Bình | Nhân viên kho | KHO-DN |
-| `duyet`, Lê Minh Châu | Người duyệt chứng từ | Cả 3 kho |
-| `kiemke`, Phạm Quốc Dũng | Phụ trách kiểm kê | KHO-HN, KHO-HCM |
+| Tài khoản                | Vai trò              | Kho             |
+| ------------------------ | -------------------- | --------------- |
+| `nv.hn`, Nguyễn Văn An   | Nhân viên kho        | KHO-HN          |
+| `nv.dn`, Trần Thị Bình   | Nhân viên kho        | KHO-DN          |
+| `duyet`, Lê Minh Châu    | Người duyệt chứng từ | Cả 3 kho        |
+| `kiemke`, Phạm Quốc Dũng | Phụ trách kiểm kê    | KHO-HN, KHO-HCM |
 
 ## Hai tình huống demo
 
-1. **Nhập → xác nhận → xuất → tra cứu.** Đăng nhập `nv.hn` để lập phiếu nhập. Đổi sang `duyet` để mở phiếu chờ duyệt và xác nhận. Sau đó lập phiếu xuất, rồi vào *Tra cứu tồn* và *Lịch sử phát sinh* để đối chiếu.
+1. **Nhập → xác nhận → xuất → tra cứu.** Đăng nhập `nv.hn` để lập phiếu nhập. Đổi sang `duyet` để mở phiếu chờ duyệt và xác nhận. Sau đó lập phiếu xuất, rồi vào _Tra cứu tồn_ và _Lịch sử phát sinh_ để đối chiếu.
 2. **Điều chuyển → kiểm kê → điều chỉnh.** Lập phiếu điều chuyển KHO-HCM → KHO-DN và xem hai dòng phát sinh (−/+). Đăng nhập `kiemke`, mở đợt `KK-0002`, nhập số thực tế và lý do, xem chênh lệch cùng chứng từ điều chỉnh sẽ lập. Đợt `KK-0001` là mẫu đã chốt, có chứng từ `DC-0001`.
 
 ## Kiểm thử
@@ -80,13 +79,13 @@ bash app.sh lint    # kiểm tra cú pháp mọi tệp PHP
 
 Đối chiếu với các phép thử bắt buộc của đề:
 
-| Phép thử bắt buộc | Hiện tại |
-|---|---|
-| Kho còn 5, hai yêu cầu cùng xuất 4: chỉ một phiếu được ghi nhận | Đã kiểm tra tuần tự (`tests/run.php`); bản đồng thời thật cần CSDL ⏳ |
-| Lỗi giữa lúc trừ kho A và cộng kho B: không có thay đổi dở dang | Đã kiểm tra tổng phát sinh điều chuyển = 0; kiểm tra rollback cần CSDL ⏳ |
-| Gửi lại chứng từ đã xác nhận: tồn và sổ không tăng | Cần khóa idempotency trong CSDL ⏳ |
+| Phép thử bắt buộc                                                 | Hiện tại                                                                    |
+| ----------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| Kho còn 5, hai yêu cầu cùng xuất 4: chỉ một phiếu được ghi nhận   | Đã kiểm tra tuần tự (`tests/run.php`); bản đồng thời thật cần CSDL ⏳       |
+| Lỗi giữa lúc trừ kho A và cộng kho B: không có thay đổi dở dang   | Đã kiểm tra tổng phát sinh điều chuyển = 0; kiểm tra rollback cần CSDL ⏳   |
+| Gửi lại chứng từ đã xác nhận: tồn và sổ không tăng                | Cần khóa idempotency trong CSDL ⏳                                          |
 | Tài khoản kho A không lập phiếu xuất kho B bằng yêu cầu trực tiếp | ✔ `WAREHOUSE_FORBIDDEN`, kiểm tra ở `validateVoucher` và mọi trang chi tiết |
-| Điều chỉnh kiểm kê có lý do; tồn sau điều chỉnh khớp lịch sử | ✔ bắt buộc lý do (`REASON_REQUIRED`); điều chỉnh khớp tổng chênh lệch |
+| Điều chỉnh kiểm kê có lý do; tồn sau điều chỉnh khớp lịch sử      | ✔ bắt buộc lý do (`REASON_REQUIRED`); điều chỉnh khớp tổng chênh lệch       |
 
 ## Cấu trúc mã nguồn
 
