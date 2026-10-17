@@ -33,6 +33,65 @@ Mỗi tài khoản chỉ thao tác trên **các kho được phân quyền**. Qu
 | 4   | Tạo đợt kiểm kê, nhập số thực tế, tính chênh lệch, lập chứng từ điều chỉnh có lý do            | `/counts.php`, `/count.php`                      | Giao diện ✔ · CSDL ⏳ |
 | 5   | Lịch sử hàng, đối chiếu tồn, xuất báo cáo CSV; sửa bằng chứng từ điều chỉnh, không xóa lịch sử | `/history.php`, `/export.php`                    | Giao diện ✔ · CSDL ⏳ |
 
+## Luồng hoạt động
+
+### Luồng sử dụng tổng quát
+
+```mermaid
+flowchart TD
+    A[Truy cập hệ thống] --> B[Chọn tài khoản mẫu]
+    B --> C[Kiểm tra quyền và phạm vi kho]
+    C --> D[Bảng điều khiển]
+    D --> E[Tra cứu tồn và lịch sử]
+    D --> F[Lập phiếu nhập, xuất hoặc điều chuyển]
+    D --> G[Tạo và thực hiện kiểm kê]
+    D --> H[Quản lý danh mục kho và mặt hàng]
+    E --> I[Xuất báo cáo CSV]
+    F --> J[Người duyệt xác nhận chứng từ]
+    J --> E
+    G --> E
+```
+
+### Luồng chứng từ và cập nhật tồn
+
+```mermaid
+flowchart TD
+    A[Nhân viên kho lập phiếu] --> B[Gửi biểu mẫu bằng POST kèm CSRF]
+    B --> C{Máy chủ kiểm tra quyền kho và dữ liệu}
+    C -->|Không hợp lệ| D[Hiển thị lỗi để sửa]
+    D --> A
+    C -->|Hợp lệ| E[Hiển thị bản xem trước phiếu chờ duyệt]
+    E --> F[Người duyệt mở chứng từ]
+    F --> G{Có quyền xác nhận và tồn không âm?}
+    G -->|Không| H[Từ chối xác nhận]
+    G -->|Có| I[Xác nhận chứng từ]
+    I --> J{Loại chứng từ}
+    J -->|Nhập, xuất hoặc điều chỉnh| K[Ghi dòng phát sinh tương ứng]
+    J -->|Điều chuyển| L[Ghi giảm ở kho đi và tăng ở kho đến]
+    K --> M[Tính tồn từ sổ phát sinh]
+    L --> M
+    M --> N[Tra cứu tồn và đối chiếu lịch sử]
+```
+
+### Luồng kiểm kê
+
+```mermaid
+flowchart TD
+    A[Người có quyền tạo đợt kiểm kê] --> B[Chụp số hệ thống theo lô]
+    B --> C[Nhập số lượng thực tế]
+    C --> D{Có chênh lệch?}
+    D -->|Không| E[Chốt đợt kiểm kê]
+    D -->|Có| F[Nhập lý do cho từng dòng lệch]
+    F --> G{Dữ liệu hợp lệ?}
+    G -->|Không| C
+    G -->|Có| H[Lập chứng từ điều chỉnh theo chênh lệch]
+    H --> I[Chốt đợt và cập nhật tồn qua sổ phát sinh]
+    E --> J[Đối chiếu số tồn]
+    I --> J
+```
+
+> **Lưu ý:** Các biểu đồ mô tả luồng nghiệp vụ của ứng dụng. Ở phiên bản hiện tại, lập phiếu, xác nhận và chốt kiểm kê mới kiểm tra dữ liệu rồi hiển thị bản xem trước; chưa ghi vào CSDL. Khi tích hợp CSDL, phát sinh sẽ được ghi sổ khi chứng từ được xác nhận.
+
 ### Hai yêu cầu kỹ thuật
 
 1. **Sổ phát sinh và giao dịch cập nhật tồn.** Khi nhiều yêu cầu cùng xuất, số tồn không được âm. Gửi lại một chứng từ không được ghi nhận thêm lần nữa.
