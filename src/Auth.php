@@ -11,7 +11,26 @@ const ROLE_LABELS = [
 function currentUser(): ?array
 {
     $id = $_SESSION['user_id'] ?? null;
-    return is_int($id) ? Store::find('users', $id) : null;
+    $user = is_int($id) ? Store::find('users', $id) : null;
+    if ($user !== null && !$user['active']) {
+        unset($_SESSION['user_id']);
+        return null;
+    }
+    return $user;
+}
+
+function authenticate(string $username, string $password): ?array
+{
+    $query = Database::connection()->prepare(
+        'SELECT id, password_hash FROM users WHERE username = :username AND active = TRUE LIMIT 1'
+    );
+    $query->execute(['username' => $username]);
+    $candidate = $query->fetch();
+    if (!$candidate || !is_string($candidate['password_hash'])
+        || !password_verify($password, $candidate['password_hash'])) {
+        return null;
+    }
+    return Store::find('users', (int)$candidate['id']);
 }
 
 function requireLogin(): array

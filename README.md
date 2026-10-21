@@ -4,7 +4,7 @@ Bài tập lớn học phần **Phát triển phần mềm mã nguồn mở**, n
 
 Phần mềm mã nguồn mở giúp một đơn vị có nhiều kho theo dõi số lượng hàng, ghi nhận chứng từ nhập, xuất và điều chuyển, và tìm nguyên nhân chênh lệch khi kiểm kê. Số tồn **không nhập tay**: hệ thống luôn tính lại từ sổ phát sinh của các chứng từ đã xác nhận, nên có thể đối chiếu bất cứ lúc nào.
 
-> **Trạng thái hiện tại:** đã có giao diện và logic nghiệp vụ, chạy trên dữ liệu giả trong `data/seed.php`. Các thao tác ghi (lập phiếu, xác nhận, kiểm kê) đã kiểm tra dữ liệu và quyền ở phía máy chủ, nhưng **chưa lưu CSDL**. Giai đoạn tiếp theo sẽ chuyển sang PostgreSQL/MySQL và dùng giao dịch (xem [Lộ trình](#lộ-trình)).
+> **Trạng thái hiện tại:** lớp `Store` đã đọc PostgreSQL cho các trang. Các thao tác ghi (lập phiếu, xác nhận, kiểm kê) vẫn mới kiểm tra dữ liệu và hiển thị bản xem trước, chưa lưu vào CSDL. Cần nạp dữ liệu mẫu trước khi đăng nhập.
 
 ## Thành viên
 
@@ -90,21 +90,21 @@ flowchart TD
     I --> J
 ```
 
-> **Lưu ý:** Các biểu đồ mô tả luồng nghiệp vụ của ứng dụng. Ở phiên bản hiện tại, lập phiếu, xác nhận và chốt kiểm kê mới kiểm tra dữ liệu rồi hiển thị bản xem trước; chưa ghi vào CSDL. Khi tích hợp CSDL, phát sinh sẽ được ghi sổ khi chứng từ được xác nhận.
+> **Lưu ý:** Các biểu đồ mô tả luồng nghiệp vụ. Hiện lớp `Store` đã đọc dữ liệu PostgreSQL, nhưng lập phiếu, xác nhận và chốt kiểm kê mới kiểm tra dữ liệu rồi hiển thị bản xem trước; các thao tác này chưa ghi vào CSDL.
 
 ### Hai yêu cầu kỹ thuật
 
 1. **Sổ phát sinh và giao dịch cập nhật tồn.** Khi nhiều yêu cầu cùng xuất, số tồn không được âm. Gửi lại một chứng từ không được ghi nhận thêm lần nữa.
 2. **Điều chuyển trong cùng một giao dịch.** Trừ kho đi và cộng kho đến phải cùng thành công hoặc cùng thất bại; số tồn luôn khớp sổ phát sinh.
 
-Hiện tại `src/StockLedger.php` đã có phần quy tắc: tính tồn từ sổ, sinh hai dòng phát sinh cho điều chuyển, phát hiện tồn âm. Phần khóa dòng và giao dịch CSDL sẽ làm ở giai đoạn sau.
+Hiện tại `src/StockLedger.php` có phần quy tắc tính tồn từ sổ, sinh hai dòng phát sinh cho điều chuyển và phát hiện tồn âm. Khóa dòng và giao dịch CSDL chưa được triển khai.
 
 ## Cài đặt và chạy
 
-Yêu cầu: Ubuntu hoặc WSL, **PHP 8.1 trở lên**, Git. Giai đoạn này chưa cần CSDL, Composer hay framework.
+Yêu cầu: Ubuntu hoặc WSL, **PHP 8.1 trở lên**, Git, PostgreSQL và PHP PDO PostgreSQL. Không cần Composer hay framework.
 
 ```bash
-sudo apt install php-cli git      # nếu chưa có
+sudo apt install php-cli php-pgsql git postgresql postgresql-client  # nếu chưa có
 git clone <địa chỉ repo>
 cd PTPMMNM-CNTT-1812-NHOM-5
 bash app.sh check                 # kiểm tra môi trường
@@ -113,9 +113,61 @@ bash app.sh run                   # chạy tại http://127.0.0.1:8110
 
 Đổi cổng bằng `PORT=8200 bash app.sh run`. Dừng máy chủ bằng `Ctrl+C`.
 
+### Khởi tạo PostgreSQL
+
+Schema ban đầu nằm ở `database/schema.sql`. Trên Ubuntu/WSL, khởi động PostgreSQL rồi mở phiên quản trị:
+
+```bash
+sudo service postgresql start
+sudo -u postgres psql
+```
+
+Trong `psql`, nhập từng lệnh ở dấu nhắc `postgres=#`. Khi chạy `\password`, nhập mật khẩu ở hai lời nhắc của nó; đợi quay lại `postgres=#` rồi mới nhập lệnh kế tiếp:
+
+```sql
+CREATE ROLE ptpmmnm_cntt_1812_nhom_5 LOGIN;
+```
+
+```text
+\password ptpmmnm_cntt_1812_nhom_5
+```
+
+```sql
+CREATE DATABASE ptpmmnm_cntt_1812_nhom_5 OWNER ptpmmnm_cntt_1812_nhom_5;
+\q
+```
+
+Chạy lại lệnh `CREATE` chỉ khi các tên đó chưa tồn tại. Sau đó kết nối đúng database và nạp bảng:
+
+```bash
+psql -h 127.0.0.1 -U ptpmmnm_cntt_1812_nhom_5 -d ptpmmnm_cntt_1812_nhom_5
+```
+
+```sql
+\i database/schema.sql
+\dt
+\q
+```
+
+Sau khi chạy các lệnh trên, database và schema sẽ sẵn sàng. Từ thư mục dự án, cấu hình kết nối ứng dụng:
+
+```bash
+php tools/db-config.php
+```
+
+Nhập cùng host, database, user và mật khẩu vừa tạo. Công cụ thử kết nối trước khi lưu `.local/db.json` với quyền riêng tư; tệp này đã được loại khỏi Git. Sau đó `bash app.sh run` sẽ đọc các bảng PostgreSQL. Bảng đang rỗng cho đến khi nạp dữ liệu mẫu. Các form ghi chứng từ và kiểm kê hiện vẫn chỉ hiển thị bản xem trước, chưa ghi vào database.
+
+Để nạp dữ liệu mẫu (chạy từ thư mục gốc của dự án):
+
+```bash
+psql -h 127.0.0.1 -U ptpmmnm_cntt_1812_nhom_5 -d ptpmmnm_cntt_1812_nhom_5 -f database/seed.sql
+```
+
+Lệnh sẽ hỏi mật khẩu database. `database/seed.sql` nạp 3 kho, 30 mặt hàng và 203 dòng phát sinh; script chỉ chạy khi các bảng đang trống.
+
 ### Tài khoản mẫu
 
-Trang đăng nhập cho chọn một trong bốn tài khoản giả (giai đoạn giao diện chưa dùng mật khẩu):
+Trang đăng nhập dùng tên đăng nhập và mật khẩu. Bốn tài khoản mẫu dùng chung mật khẩu `KhoMau@2026`:
 
 | Tài khoản                | Vai trò              | Kho             |
 | ------------------------ | -------------------- | --------------- |
@@ -123,6 +175,8 @@ Trang đăng nhập cho chọn một trong bốn tài khoản giả (giai đoạ
 | `nv.dn`, Trần Thị Bình   | Nhân viên kho        | KHO-DN          |
 | `duyet`, Lê Minh Châu    | Người duyệt chứng từ | Cả 3 kho        |
 | `kiemke`, Phạm Quốc Dũng | Phụ trách kiểm kê    | KHO-HN, KHO-HCM |
+
+Mật khẩu được lưu dưới dạng hash trong database. Nếu dữ liệu mẫu đã được nạp trước khi có mật khẩu, chạy `psql -h 127.0.0.1 -U ptpmmnm_cntt_1812_nhom_5 -d ptpmmnm_cntt_1812_nhom_5 -f database/demo-passwords.sql` một lần. Đây là mật khẩu dùng cho dữ liệu giả lập.
 
 ## Hai tình huống demo
 
@@ -158,11 +212,12 @@ src/
   StockLedger.php Quy tắc tồn kho thuần: tính tồn từ sổ, phát sinh của chứng từ, phát hiện tồn âm
   Validation.php  Kiểm tra form phía máy chủ, trả ['errors' => [...], 'data' => [...]]
   Auth.php        Người dùng hiện tại, quyền theo kho, quyền xác nhận
-  Store.php       Truy cập dữ liệu (hiện đọc seed; sẽ thay bằng PDO, giữ nguyên tên hàm)
+  Store.php       Đọc dữ liệu PostgreSQL theo cấu trúc dùng trong giao diện
+  Database.php    Mở kết nối PostgreSQL từ cấu hình cục bộ
   Input.php       Đọc đầu vào an toàn và escape HTML (e())
 templates/     Phần đầu/cuối trang, hộp lỗi
-data/seed.php  Dữ liệu giả, sinh tất định
 tests/         Bộ kiểm thử logic
+tools/         Cấu hình kết nối PostgreSQL
 app.sh         check | run | test | lint
 ```
 
@@ -170,7 +225,7 @@ Quy ước: mọi thao tác thay đổi dữ liệu dùng POST, có CSRF token v
 
 ## Dữ liệu mẫu
 
-`data/seed.php` sinh **3 kho, 30 mặt hàng, 40 lô, hơn 200 dòng phát sinh**, gồm nhập, xuất, điều chuyển, một đợt kiểm kê đã chốt có chênh lệch, một đợt đang kiểm và 3 chứng từ chờ duyệt. Toàn bộ tên người, địa chỉ và số liệu đều là **dữ liệu giả**.
+Các bảng PostgreSQL hiện chưa được nạp dữ liệu. Cần thêm dữ liệu mẫu trước khi dùng chức năng đăng nhập và tra cứu. Đề bài yêu cầu tối thiểu **3 kho, 30 mặt hàng và 200 dòng phát sinh**.
 
 Bảng dự kiến khi chuyển sang CSDL: `warehouses`, `items`, `batches`, `users`, `user_warehouses`, `vouchers`, `voucher_lines`, `stock_movements`, `stock_counts`, `stock_count_lines`.
 
@@ -178,11 +233,13 @@ Bảng dự kiến khi chuyển sang CSDL: `warehouses`, `items`, `batches`, `us
 
 - [x] Giao diện 5 nhóm chức năng, quyền theo kho, dữ liệu mẫu
 - [x] Quy tắc sổ phát sinh và kiểm thử logic
-- [ ] Schema PostgreSQL/MySQL, migration, nạp dữ liệu mẫu
+- [x] Schema PostgreSQL và lớp đọc dữ liệu qua PDO
+- [ ] Nạp dữ liệu mẫu vào PostgreSQL
 - [ ] Xác nhận chứng từ trong giao dịch: khóa dòng tồn (`SELECT … FOR UPDATE`), ràng buộc `CHECK`, khóa idempotency cho chứng từ
 - [ ] Điều chuyển trong một giao dịch; kiểm thử rollback khi gây lỗi giữa hai thao tác
 - [ ] Kiểm thử tích hợp cho 5 phép thử bắt buộc, kể cả hai yêu cầu xuất đồng thời
-- [ ] Đăng nhập bằng mật khẩu (`password_hash`), GitHub Actions, bản phát hành
+- [x] Đăng nhập bằng mật khẩu (`password_hash`)
+- [ ] GitHub Actions và bản phát hành
 
 Không thuộc phạm vi: sản xuất, thuế, kế toán tài chính, website bán hàng, thanh toán.
 

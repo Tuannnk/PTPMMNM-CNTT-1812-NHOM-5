@@ -1,25 +1,63 @@
 <?php
 declare(strict_types=1);
-// Lớp truy cập dữ liệu. Giai đoạn giao diện đọc từ data/seed.php;
-// giai đoạn sau thay phần thân bằng truy vấn PostgreSQL/MySQL, giữ nguyên tên phương thức.
+// Đọc dữ liệu PostgreSQL theo các cấu trúc đang dùng trong giao diện.
+require_once __DIR__ . '/Database.php';
 
 final class Store
 {
-    private static ?array $data = null;
+    private const TABLES = [
+        'warehouses', 'users', 'items', 'batches', 'vouchers',
+        'voucher_lines', 'stock_movements', 'stock_counts',
+    ];
 
-    private static function data(): array
-    {
-        return self::$data ??= require __DIR__ . '/../data/seed.php';
-    }
+    private static array $cache = [];
 
     public static function all(string $table): array
     {
-        return self::data()[$table];
+        if (!in_array($table, self::TABLES, true)) {
+            throw new InvalidArgumentException('Bảng không được hỗ trợ: ' . $table);
+        }
+        if (array_key_exists($table, self::$cache)) {
+            return self::$cache[$table];
+        }
+
+        $db = Database::connection();
+        $rows = $db->query('SELECT * FROM ' . $table . ' ORDER BY id')->fetchAll();
+        $rows = array_map([self::class, 'normalize'], $rows);
+
+        if ($table === 'users') {
+            $byId = array_column($rows, null, 'id');
+            foreach ($byId as &$user) {
+                $user['warehouses'] = [];
+            }
+            unset($user);
+            $memberships = $db->query('SELECT user_id, warehouse_id FROM user_warehouses ORDER BY user_id, warehouse_id');
+            foreach ($memberships as $membership) {
+                $userId = (int)$membership['user_id'];
+                if (isset($byId[$userId])) {
+                    $byId[$userId]['warehouses'][] = (int)$membership['warehouse_id'];
+                }
+            }
+            $rows = array_values($byId);
+        } elseif ($table === 'stock_counts') {
+            $lines = $db->query('SELECT * FROM stock_count_lines ORDER BY id')->fetchAll();
+            $byCount = [];
+            foreach ($lines as $line) {
+                $line = self::normalize($line);
+                $byCount[$line['count_id']][] = $line;
+            }
+            foreach ($rows as &$count) {
+                $count['lines'] = $byCount[$count['id']] ?? [];
+            }
+            unset($count);
+        }
+
+        return self::$cache[$table] = $rows;
     }
 
     public static function find(string $table, int $id): ?array
     {
-        foreach (self::data()[$table] as $row) {
+        foreach (self::all($table) as $row) {
             if ($row['id'] === $id) {
                 return $row;
             }
@@ -30,13 +68,13 @@ final class Store
     /** @return array<int,array> chỉ mục theo id */
     public static function indexed(string $table): array
     {
-        return array_column(self::data()[$table], null, 'id');
+        return array_column(self::all($table), null, 'id');
     }
 
     public static function linesOf(int $voucherId): array
     {
         return array_values(array_filter(
-            self::data()['voucher_lines'],
+            self::all('voucher_lines'),
             fn($line) => $line['voucher_id'] === $voucherId
         ));
     }
@@ -44,7 +82,7 @@ final class Store
     public static function batchesOf(int $itemId): array
     {
         return array_values(array_filter(
-            self::data()['batches'],
+            self::all('batches'),
             fn($batch) => $batch['item_id'] === $itemId
         ));
     }
@@ -52,8 +90,36 @@ final class Store
     public static function movementsOf(int $voucherId): array
     {
         return array_values(array_filter(
-            self::data()['stock_movements'],
-            fn($m) => $m['voucher_id'] === $voucherId
+            self::all('stock_movements'),
+            fn($movement) => $movement['voucher_id'] === $voucherId
         ));
+    }
+
+    private static function normalize(array $row): array
+    {
+        foreach (['id', 'user_id', 'warehouse_id', 'item_id', 'batch_id', 'voucher_id', 'count_id',
+            'created_by', 'confirmed_by', 'to_warehouse_id', 'ref_id', 'adjust_voucher_id'] as $key) {
+            if (array_key_exists($key, $row) && $row[$key] !== null) {
+                $row[$key] = (int)$row[$key];
+            }
+        }
+        foreach (['qty', 'min_stock', 'system_qty', 'actual_qty'] as $key) {
+            if (array_key_exists($key, $row) && $row[$key] !== null) {
+                $row[$key] = (int)$row[$key];
+            }
+        }
+        if (isset($row['full_name'])) {
+            $row['name'] = $row['full_name'];
+            unset($row['full_name']);
+        }
+        if (isset($row['occurred_at'])) {
+            $row['at'] = $row['occurred_at'];
+            unset($row['occurred_at']);
+        }
+        if (array_key_exists('active', $row)) {
+            $row['active'] = in_array($row['active'], [true, 1, '1', 't', 'true'], true);
+        }
+        unset($row['password_hash']);
+        return $row;
     }
 }

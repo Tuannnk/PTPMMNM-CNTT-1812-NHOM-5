@@ -11,6 +11,7 @@ usage() {
 check_env() {
   command -v php >/dev/null 2>&1 || { echo 'THIEU_PHP: sudo apt install php-cli'; return 2; }
   php -r 'exit(PHP_VERSION_ID >= 80100 ? 0 : 1);' || { echo 'CAN_PHP_8_1_TRO_LEN'; return 2; }
+  php -r 'exit(extension_loaded("pdo_pgsql") ? 0 : 1);' || { echo 'THIEU_PDO_PGSQL: sudo apt install php-pgsql'; return 2; }
   echo 'MOI_TRUONG=SAN_SANG'
 }
 case "${1:-help}" in
@@ -29,7 +30,7 @@ case "${1:-help}" in
     fail=0
     while IFS= read -r -d '' file; do
       php -l "$file" >/dev/null || { echo "LOI_CU_PHAP $file"; fail=1; }
-    done < <(find src public templates data tests -name '*.php' -print0)
+    done < <(find src public templates tests tools -name '*.php' -print0)
     [[ "$fail" -eq 0 ]] && echo 'LINT=PASS' || exit 1 ;;
   help|-h|--help) usage ;;
   *) usage; exit 2 ;;
