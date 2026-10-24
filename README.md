@@ -4,7 +4,7 @@ Bài tập lớn học phần **Phát triển phần mềm mã nguồn mở**, n
 
 Phần mềm mã nguồn mở giúp một đơn vị có nhiều kho theo dõi số lượng hàng, ghi nhận chứng từ nhập, xuất và điều chuyển, và tìm nguyên nhân chênh lệch khi kiểm kê. Số tồn **không nhập tay**: hệ thống luôn tính lại từ sổ phát sinh của các chứng từ đã xác nhận, nên có thể đối chiếu bất cứ lúc nào.
 
-> **Trạng thái hiện tại:** ứng dụng đọc và ghi danh mục qua PostgreSQL; phiếu nhập/xuất được lưu nháp và người duyệt ghi sổ khi xác nhận; luồng điều chuyển có kiểm hàng, duyệt xuất và xác nhận nhận hàng. Kiểm kê vẫn mới hiển thị bản xem trước.
+> **Trạng thái hiện tại:** ứng dụng đọc và ghi danh mục qua PostgreSQL; phiếu nhập/xuất được lưu nháp và người duyệt ghi sổ khi xác nhận; luồng điều chuyển có kiểm hàng, duyệt xuất và xác nhận nhận hàng; kiểm kê lưu số đếm và tạo chứng từ điều chỉnh trong giao dịch.
 
 ## Thành viên
 
@@ -30,7 +30,7 @@ Mỗi tài khoản chỉ thao tác trên **các kho được phân quyền**. Nh
 | 1   | Quản lý kho, mặt hàng, đơn vị tính, lô hàng và quyền theo kho                                  | `/warehouses.php`, `/items.php`, `/access.php`   | Đã ghi PostgreSQL; quản trị viên quản lý danh mục |
 | 2   | Lập, kiểm tra, xác nhận phiếu nhập/xuất; tra cứu tồn từ dòng phát sinh                         | `/voucher-new.php`, `/voucher.php`, `/stock.php` | Đã lưu PostgreSQL; ghi sổ khi duyệt |
 | 3   | Điều chuyển giữa hai kho, có kiểm hàng, duyệt xuất và nhận hàng                                 | `/voucher-new.php?type=transfer`, `/voucher.php` | Đã ghi PostgreSQL theo giao dịch |
-| 4   | Tạo đợt kiểm kê, nhập số thực tế, tính chênh lệch, lập chứng từ điều chỉnh có lý do            | `/counts.php`, `/count.php`                      | Giao diện ✔ · CSDL ⏳ |
+| 4   | Tạo đợt kiểm kê, nhập số thực tế, tính chênh lệch, lập chứng từ điều chỉnh có lý do            | `/counts.php`, `/count.php`                      | Đã ghi PostgreSQL trong cùng giao dịch |
 | 5   | Lịch sử hàng, đối chiếu tồn, xuất báo cáo CSV; sửa bằng chứng từ điều chỉnh, không xóa lịch sử | `/history.php`, `/export.php`                    | Giao diện ✔ · CSDL ⏳ |
 
 ## Luồng hoạt động
@@ -93,7 +93,7 @@ flowchart TD
     I --> J
 ```
 
-> **Lưu ý:** Điều chuyển được ghi theo các giai đoạn có transaction riêng: duyệt xuất trừ tồn kho đi; xác nhận nhận hàng cộng đúng số thực nhận ở kho đến. Phần thiếu được lưu cùng phiếu để kho đi xử lý bổ sung. Phiếu nhập/xuất thường được lưu nháp và chỉ ghi phát sinh sau khi duyệt; chốt kiểm kê vẫn mới kiểm tra rồi hiển thị bản xem trước.
+> **Lưu ý:** Điều chuyển được ghi theo các giai đoạn có transaction riêng: duyệt xuất trừ tồn kho đi; xác nhận nhận hàng cộng đúng số thực nhận ở kho đến. Phần thiếu được lưu cùng phiếu để kho đi xử lý bổ sung. Phiếu nhập/xuất thường được lưu nháp và chỉ ghi phát sinh sau khi duyệt. Chốt kiểm kê, phiếu điều chỉnh và các dòng phát sinh được ghi trong một giao dịch.
 
 ### Hai yêu cầu kỹ thuật
 
@@ -158,7 +158,7 @@ Sau khi chạy các lệnh trên, database và schema sẽ sẵn sàng. Khi nân
 php tools/db-config.php
 ```
 
-Nhập cùng host, database, user và mật khẩu vừa tạo. Công cụ thử kết nối trước khi lưu `.local/db.json` với quyền riêng tư; tệp này đã được loại khỏi Git. Sau đó `bash app.sh run` sẽ đọc các bảng PostgreSQL. Bảng đang rỗng cho đến khi nạp dữ liệu mẫu. Phiếu nhập/xuất và điều chuyển được lưu PostgreSQL; kiểm kê vẫn đang ở bản xem trước.
+Nhập cùng host, database, user và mật khẩu vừa tạo. Công cụ thử kết nối trước khi lưu `.local/db.json` với quyền riêng tư; tệp này đã được loại khỏi Git. Sau đó `bash app.sh run` sẽ đọc các bảng PostgreSQL. Bảng đang rỗng cho đến khi nạp dữ liệu mẫu. Phiếu nhập/xuất, điều chuyển và kiểm kê được lưu PostgreSQL.
 
 Để nạp dữ liệu mẫu (chạy từ thư mục gốc của dự án):
 

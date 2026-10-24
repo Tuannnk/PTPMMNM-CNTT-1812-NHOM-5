@@ -21,6 +21,7 @@ require __DIR__ . '/Auth.php';
 require __DIR__ . '/Validation.php';
 require __DIR__ . '/VoucherService.php';
 require __DIR__ . '/TransferService.php';
+require __DIR__ . '/StockCountService.php';
 
 const VOUCHER_TYPES = [
     'in' => 'Phiếu nhập',

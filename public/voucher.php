@@ -267,7 +267,7 @@ require __DIR__ . '/../templates/header.php';
   <h2>Dòng hàng</h2>
   <div class="table-wrap">
   <table class="table">
-    <thead><tr><th>#</th><th>Mã</th><th>Mặt hàng</th><th>Lô</th><th>ĐVT</th><th class="num">Số lượng</th><th class="num">Tồn hiện tại (kho đi)</th></tr></thead>
+    <thead><tr><th>#</th><th>Mã</th><th>Mặt hàng</th><th>Lô</th><th>ĐVT</th><th class="num">Số lượng</th><?php if ($voucher['type'] === 'adjust'): ?><th>Lý do điều chỉnh</th><?php endif; ?><th class="num">Tồn hiện tại (kho đi)</th></tr></thead>
     <tbody>
       <?php foreach ($lines as $n => $line): $item = $items[$line['item_id']]; ?>
         <tr>
@@ -277,6 +277,7 @@ require __DIR__ . '/../templates/header.php';
           <td><?= e($batches[$line['batch_id']]['code']) ?></td>
           <td><?= e($item['unit_name']) ?></td>
           <td class="num"><?= $voucher['type'] === 'adjust' ? signedQty($line['qty']) : qty($line['qty']) ?></td>
+          <?php if ($voucher['type'] === 'adjust'): ?><td><?= e($line['reason'] ?: '—') ?></td><?php endif; ?>
           <td class="num"><?= $canSeeSource ? qty(StockLedger::balanceOf($balances, $voucher['warehouse_id'], $line['batch_id'])) : '—' ?></td>
         </tr>
       <?php endforeach; ?>
