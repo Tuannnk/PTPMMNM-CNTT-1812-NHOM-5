@@ -51,6 +51,12 @@ require __DIR__ . '/../templates/header.php';
   <div><span>Tồn cuối kỳ theo sổ</span><strong><?= qty($report['closing']) ?></strong></div>
 </section>
 <p class="muted">Đối chiếu này cộng phát sinh đã ghi nhận theo bộ lọc kho, mặt hàng và lô; bộ lọc loại chứng từ chỉ giới hạn các dòng hiển thị.</p>
+<section class="reconcile">
+  <div><span>Nhóm kho/lô đã kiểm kê đối chiếu đến <?= e(dateOnly($report['reconciliation']['as_of'])) ?></span><strong><?= qty($report['reconciliation']['checked']) ?></strong></div>
+  <div><span>Nhóm đang lệch</span><strong class="<?= $report['reconciliation']['mismatches'] ? 'qty-neg' : 'qty-pos' ?>"><?= qty($report['reconciliation']['mismatches']) ?></strong></div>
+  <div><span>Tổng trị tuyệt đối phần lệch</span><strong><?= qty($report['reconciliation']['absolute_difference']) ?></strong></div>
+</section>
+<p class="muted">Đối chiếu lấy số thực tế ở đợt kiểm kê đã chốt gần nhất cho từng kho/lô, cộng các phát sinh sau thời điểm chốt rồi so với sổ.</p>
 <p class="result-count"><?= count($rows) ?> dòng phát sinh</p>
 <div class="table-wrap"><table class="table">
   <thead><tr><th>Thời điểm</th><th>Chứng từ</th><th>Kho</th><th>Mặt hàng</th><th>Lô</th><th class="num">Phát sinh</th><th class="num">Lũy kế kho/lô</th></tr></thead>

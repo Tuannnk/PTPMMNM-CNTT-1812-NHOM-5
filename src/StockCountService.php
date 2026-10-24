@@ -14,6 +14,12 @@ final class StockCountService
         $db = Database::connection();
         $db->beginTransaction();
         try {
+            InventoryGuard::lockWarehouses($db, [$warehouseId]);
+            $openQuery = $db->prepare("SELECT 1 FROM stock_counts WHERE warehouse_id=:warehouse AND status='counting' LIMIT 1");
+            $openQuery->execute(['warehouse' => $warehouseId]);
+            if ($openQuery->fetchColumn()) {
+                throw new DomainException('COUNT_ALREADY_OPEN');
+            }
             $batches = $db->prepare(
                 'SELECT b.id,b.item_id,COALESCE(SUM(sm.qty),0) AS system_qty '
                 . 'FROM batches b JOIN items i ON i.id=b.item_id AND i.active=TRUE '
@@ -82,9 +88,40 @@ final class StockCountService
                 return ['already_closed' => true, 'adjust_voucher_id' => (int)$count['adjust_voucher_id']];
             }
 
+            InventoryGuard::lockWarehouses($db, [$count['warehouse_id']]);
+
             $query = $db->prepare('SELECT * FROM stock_count_lines WHERE count_id=:id ORDER BY id FOR UPDATE');
             $query->execute(['id' => $countId]);
             $storedLines = $query->fetchAll(PDO::FETCH_ASSOC);
+
+            // Other stock operations may have happened while the count was open.
+            // Rebase the adjustment to the latest ledger balance protected by the shared warehouse lock.
+            $currentQuery = $db->prepare(
+                'SELECT batch_id, COALESCE(SUM(qty),0) AS balance FROM stock_movements '
+                . 'WHERE warehouse_id=:warehouse GROUP BY batch_id'
+            );
+            $currentQuery->execute(['warehouse' => $count['warehouse_id']]);
+            $currentBalances = [];
+            foreach ($currentQuery->fetchAll(PDO::FETCH_ASSOC) as $balance) {
+                $currentBalances[(int)$balance['batch_id']] = (int)$balance['balance'];
+            }
+            $saveClosingSystem = $db->prepare(
+                'UPDATE stock_count_lines SET closing_system_qty=:qty WHERE id=:id AND count_id=:count'
+            );
+            foreach ($storedLines as &$storedLine) {
+                $batchId = (int)$storedLine['batch_id'];
+                $closingSystemQty = $currentBalances[$batchId] ?? 0;
+                if ($closingSystemQty < 0) {
+                    throw new DomainException('COUNT_NEGATIVE_SYSTEM_STOCK');
+                }
+                $storedLine['closing_system_qty'] = $closingSystemQty;
+                $saveClosingSystem->execute([
+                    'qty' => $closingSystemQty,
+                    'id' => (int)$storedLine['id'],
+                    'count' => $countId,
+                ]);
+            }
+            unset($storedLine);
             $submitted = [];
             foreach ($inputLines as $line) {
                 $lineId = (int)($line['id'] ?? 0);
@@ -108,7 +145,7 @@ final class StockCountService
                 $actual = filter_var($entry['actual_qty'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
                 $reason = is_string($entry['reason'] ?? null) ? trim($entry['reason']) : '';
                 if ($actual === false || !textFits($reason, 255)) throw new DomainException('COUNT_LINES_INVALID');
-                $diff = $actual - (int)$line['system_qty'];
+                $diff = $actual - (int)$line['closing_system_qty'];
                 if ($diff !== 0 && $reason === '') throw new DomainException('REASON_REQUIRED');
                 $saveLine->execute(['actual' => $actual, 'reason' => $reason, 'id' => $lineId, 'count' => $countId]);
                 if ($diff !== 0) {
@@ -139,8 +176,8 @@ final class StockCountService
                 . 'VALUES (:voucher,:item,:batch,:qty,:reason)'
             );
             $movement = $db->prepare(
-                'INSERT INTO stock_movements (voucher_id,warehouse_id,item_id,batch_id,qty) '
-                . 'VALUES (:voucher,:warehouse,:item,:batch,:qty)'
+                'INSERT INTO stock_movements (voucher_id,warehouse_id,item_id,batch_id,qty,occurred_at) '
+                . 'VALUES (:voucher,:warehouse,:item,:batch,:qty,clock_timestamp())'
             );
             foreach ($differences as $difference) {
                 $params = [
@@ -160,7 +197,7 @@ final class StockCountService
                 ]);
             }
 
-            $close = $db->prepare("UPDATE stock_counts SET status='closed',adjust_voucher_id=:voucher WHERE id=:id AND status='counting'");
+            $close = $db->prepare("UPDATE stock_counts SET status='closed',adjust_voucher_id=:voucher,closed_at=clock_timestamp() WHERE id=:id AND status='counting'");
             $close->execute(['voucher' => $voucherId, 'id' => $countId]);
             if ($close->rowCount() !== 1) throw new DomainException('COUNT_STATE_CHANGED');
             $db->commit();

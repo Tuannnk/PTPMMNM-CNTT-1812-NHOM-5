@@ -11,16 +11,30 @@ if (!canAccessWarehouse($user, $count['warehouse_id'])) {
     forbid();
 }
 $editable = $count['status'] === 'counting' && in_array($user['role'], ['counter', 'approver'], true);
+$liveBalances = StockLedger::balances(Store::all('stock_movements'));
+$validationCount = $count;
+if ($count['status'] === 'counting') {
+    foreach ($validationCount['lines'] as &$validationLine) {
+        $validationLine['system_qty'] = StockLedger::balanceOf($liveBalances, $count['warehouse_id'], $validationLine['batch_id']);
+    }
+    unset($validationLine);
+}
 
 $result = null;
 $closeError = '';
-$lines = array_map(fn($l) => $l + ['diff' => $l['actual_qty'] === null ? null : $l['actual_qty'] - $l['system_qty']], $count['lines']);
+$lines = array_map(function ($l) use ($count, $liveBalances) {
+    $system = $count['status'] === 'closed'
+        ? ($l['closing_system_qty'] ?? $l['system_qty'])
+        : StockLedger::balanceOf($liveBalances, $count['warehouse_id'], $l['batch_id']);
+    return $l + ['diff' => $l['actual_qty'] === null ? null : $l['actual_qty'] - $system,
+        'display_system_qty' => $system];
+}, $count['lines']);
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     checkCsrf($_POST);
     if (!$editable) {
         forbid('COUNT_LOCKED');
     }
-    $result = validateCount($_POST, $count);
+    $result = validateCount($_POST, $validationCount);
     $lines = $result['data']['lines'];
     if (!$result['errors']) {
         try {
@@ -67,7 +81,7 @@ require __DIR__ . '/../templates/header.php';
 
 <form method="post" class="card form">
   <?= csrfInput() ?>
-  <p class="muted">Số hệ thống chụp tại thời điểm tạo đợt. Dòng có chênh lệch bắt buộc ghi lý do.</p>
+  <p class="muted">Nhập số thực tế tại thời điểm chốt. Số hệ thống lúc mở đợt được lưu để tham khảo; khi chốt, hệ thống lấy tồn mới nhất để tính delta, tránh ghi sai nếu có phát sinh trong lúc kiểm kê. Dòng có chênh lệch bắt buộc ghi lý do.</p>
   <div class="table-wrap">
   <table class="table table--form">
     <thead><tr><th>Mặt hàng</th><th>Lô</th><th class="num">Hệ thống</th><th class="num">Thực tế</th><th class="num">Chênh lệch</th><th>Lý do</th></tr></thead>
@@ -76,7 +90,7 @@ require __DIR__ . '/../templates/header.php';
         <tr class="<?= $l['diff'] ? 'row-diff' : '' ?>">
           <td><?= e($items[$l['item_id']]['name']) ?></td>
           <td><?= e($batches[$l['batch_id']]['code']) ?></td>
-          <td class="num"><?= qty($l['system_qty']) ?></td>
+          <td class="num"><?= qty($l['display_system_qty']) ?></td>
           <td class="num">
             <?php if ($editable): ?>
               <input type="number" name="actual[]" min="0" step="1" inputmode="numeric" value="<?= $l['actual_qty'] ?? '' ?>" aria-label="Số thực tế dòng <?= $i + 1 ?>">

@@ -21,7 +21,7 @@ $balances = StockLedger::balances(Store::all('stock_movements'));
 $result = null;
 $requestKey = $_SERVER['REQUEST_METHOD'] === 'POST'
     ? field($_POST, 'request_key')
-    : bin2hex(random_bytes(32));
+    : bin2hex(random_bytes(24));
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     $_SESSION['voucher_request_key'] = $requestKey;
 }
@@ -35,7 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     checkCsrf($_POST);
     // Kiểm tra quyền theo kho nằm trong validateVoucher: gửi thẳng warehouse_id của kho khác vẫn bị từ chối.
     $result = validateVoucher($_POST, $user, $balances);
-    if (!preg_match('/^[a-f0-9]{64}$/', field($_POST, 'request_key'))) {
+    if (!preg_match('/^[a-f0-9]{48}$/', field($_POST, 'request_key'))) {
         $result['errors'][] = 'REQUEST_KEY_INVALID';
     }
     $data = $result['data'];
@@ -111,7 +111,7 @@ require __DIR__ . '/../templates/header.php';
   <input type="hidden" name="type" value="<?= e($type) ?>">
   <div class="form-row">
     <label class="form-field"><?= $type === 'transfer' ? 'Kho đi' : 'Kho' ?>
-      <select name="warehouse_id" required>
+      <select name="warehouse_id" id="transfer-from-warehouse" required>
         <?php foreach ($allowed as $w): ?>
           <option value="<?= $w['id'] ?>" <?= $data['warehouse_id'] === $w['id'] ? 'selected' : '' ?>><?= e($w['name']) ?></option>
         <?php endforeach; ?>
@@ -120,9 +120,9 @@ require __DIR__ . '/../templates/header.php';
     </label>
     <?php if ($type === 'transfer'): ?>
       <label class="form-field">Kho đến
-        <select name="to_warehouse_id" required>
+        <select name="to_warehouse_id" id="transfer-to-warehouse" required>
           <option value="">— Chọn kho đến —</option>
-          <?php foreach ($activeWarehouses as $w): ?>
+          <?php foreach ($activeWarehouses as $w): if ($w['id'] === $data['warehouse_id']) continue; ?>
             <option value="<?= $w['id'] ?>" <?= $data['to_warehouse_id'] === $w['id'] ? 'selected' : '' ?>><?= e($w['name']) ?></option>
           <?php endforeach; ?>
         </select>
@@ -164,4 +164,22 @@ require __DIR__ . '/../templates/header.php';
     <a class="button button--ghost" href="/vouchers.php">Hủy</a>
   </div>
 </form>
+<?php if ($type === 'transfer'): ?>
+<script>
+(() => {
+  const source = document.getElementById('transfer-from-warehouse');
+  const destination = document.getElementById('transfer-to-warehouse');
+  const updateDestinations = () => {
+    for (const option of destination.options) {
+      const isSource = option.value !== '' && option.value === source.value;
+      option.hidden = isSource;
+      option.disabled = isSource;
+      if (isSource && option.selected) destination.value = '';
+    }
+  };
+  source.addEventListener('change', updateDestinations);
+  updateDestinations();
+})();
+</script>
+<?php endif; ?>
 <?php require __DIR__ . '/../templates/footer.php'; ?>

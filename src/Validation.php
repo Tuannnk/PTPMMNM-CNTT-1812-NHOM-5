@@ -18,6 +18,8 @@ const ERROR_LABELS = [
     'ACTUAL_INVALID' => 'Số thực tế phải là số nguyên không âm.',
     'REASON_REQUIRED' => 'Dòng có chênh lệch phải ghi lý do.',
     'TRANSFER_SAVE_FAILED' => 'Không lưu được phiếu điều chuyển. Hãy thử gửi lại; hệ thống sẽ tránh tạo phiếu trùng.',
+    'TRANSFER_SUPPLEMENT_PARENT_INVALID' => 'Phiếu điều chuyển gốc không còn ở trạng thái cần bổ sung.',
+    'TRANSFER_SUPPLEMENT_QTY_INVALID' => 'Số lượng vượt phần còn thiếu hoặc đã được một phiếu khác xử lý.',
     'VOUCHER_SAVE_FAILED' => 'Không lưu được phiếu nhập/xuất. Vui lòng thử lại hoặc kiểm tra cấu hình cơ sở dữ liệu.',
 ];
 

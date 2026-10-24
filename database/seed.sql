@@ -108,15 +108,11 @@ INSERT INTO vouchers (id, code, type, status, warehouse_id, created_by, confirme
 VALUES (202, 'DC-0001', 'adjust', 'confirmed', 1, 4, 3, now(), 'Điều chỉnh thừa theo kiểm kê mẫu');
 INSERT INTO voucher_lines (voucher_id, item_id, batch_id, qty) VALUES (202, 2, 2, 1);
 
-INSERT INTO stock_counts (id, code, warehouse_id, status, created_by, adjust_voucher_id)
-VALUES (1, 'KK-0001', 1, 'closed', 4, 202),
-       (2, 'KK-0002', 3, 'counting', 4, NULL);
-INSERT INTO stock_count_lines (count_id, item_id, batch_id, system_qty, actual_qty, reason)
-SELECT 1, 2, 2, coalesce(sum(qty), 0), coalesce(sum(qty), 0) + 1, 'Hàng nhập thừa chưa ghi nhận'
+INSERT INTO stock_counts (id, code, warehouse_id, status, created_by, adjust_voucher_id, closed_at)
+VALUES (1, 'KK-0001', 1, 'closed', 4, 202, now());
+INSERT INTO stock_count_lines (count_id, item_id, batch_id, system_qty, actual_qty, reason, closing_system_qty)
+SELECT 1, 2, 2, coalesce(sum(qty), 0), coalesce(sum(qty), 0) + 1, 'Hàng nhập thừa chưa ghi nhận', coalesce(sum(qty),0)
 FROM stock_movements WHERE warehouse_id = 1 AND item_id = 2 AND batch_id = 2;
-INSERT INTO stock_count_lines (count_id, item_id, batch_id, system_qty, actual_qty, reason)
-SELECT 2, 3, 3, coalesce(sum(qty), 0), NULL, ''
-FROM stock_movements WHERE warehouse_id = 3 AND item_id = 3 AND batch_id = 3;
 INSERT INTO stock_movements (voucher_id, warehouse_id, item_id, batch_id, qty)
 VALUES (202, 1, 2, 2, 1);
 

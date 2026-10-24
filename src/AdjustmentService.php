@@ -99,15 +99,7 @@ final class AdjustmentService
                 if (!canAccessWarehouse($approver, $line['warehouse_id'])) throw new DomainException('CONFIRM_FORBIDDEN');
             }
             unset($line);
-            $locks = [];
-            foreach ($lines as $line) $locks[$line['warehouse_id'].':'.$line['batch_id']] = true;
-            ksort($locks, SORT_STRING);
-            $lock = $db->prepare('SELECT pg_advisory_xact_lock(hashtextextended(:key,0))');
-            $transferLock = $db->prepare('SELECT pg_advisory_xact_lock(hashtext(:key))');
-            foreach (array_keys($locks) as $key) {
-                $lock->execute(['key'=>$key]);
-                $transferLock->execute(['key'=>'stock:' . $key]);
-            }
+            InventoryGuard::lockWarehouses($db, array_column($lines, 'warehouse_id'));
             $balanceQ = $db->prepare('SELECT COALESCE(SUM(qty),0) FROM stock_movements WHERE warehouse_id=:warehouse AND batch_id=:batch');
             $after = [];
             foreach ($lines as $line) {
@@ -121,8 +113,8 @@ final class AdjustmentService
             }
             $negative = array_filter($after, static fn($qty) => $qty < 0);
             if ($negative) { $db->commit(); return ['confirmed'=>false,'negative'=>$negative]; }
-            $movementInsert = $db->prepare('INSERT INTO stock_movements (voucher_id,warehouse_id,item_id,batch_id,qty)
-                VALUES (:voucher,:warehouse,:item,:batch,:qty)');
+            $movementInsert = $db->prepare('INSERT INTO stock_movements (voucher_id,warehouse_id,item_id,batch_id,qty,occurred_at)
+                VALUES (:voucher,:warehouse,:item,:batch,:qty,clock_timestamp())');
             foreach ($lines as $line) $movementInsert->execute(['voucher'=>$voucherId,'warehouse'=>$line['warehouse_id'],
                 'item'=>$line['item_id'],'batch'=>$line['batch_id'],'qty'=>$line['qty']]);
             $update = $db->prepare("UPDATE vouchers SET status='confirmed',confirmed_by=:user,confirmed_at=now() WHERE id=:id");

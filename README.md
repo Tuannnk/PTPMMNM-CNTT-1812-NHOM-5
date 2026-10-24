@@ -4,7 +4,7 @@ Bài tập lớn học phần **Phát triển phần mềm mã nguồn mở**, n
 
 Phần mềm mã nguồn mở giúp một đơn vị có nhiều kho theo dõi số lượng hàng, ghi nhận chứng từ nhập, xuất và điều chuyển, và tìm nguyên nhân chênh lệch khi kiểm kê. Số tồn **không nhập tay**: hệ thống luôn tính lại từ sổ phát sinh của các chứng từ đã xác nhận, nên có thể đối chiếu bất cứ lúc nào.
 
-> **Trạng thái hiện tại:** ứng dụng đọc và ghi dữ liệu qua PostgreSQL; phiếu nhập/xuất, điều chuyển và điều chỉnh được ghi sổ theo quy trình duyệt. Lịch sử hỗ trợ lọc kỳ và xuất CSV. Kiểm kê vẫn mới hiển thị bản xem trước.
+> **Trạng thái hiện tại:** ứng dụng đọc và ghi dữ liệu qua PostgreSQL; phiếu nhập/xuất, điều chuyển, kiểm kê và điều chỉnh được ghi sổ. Lịch sử hỗ trợ lọc kỳ, đối chiếu với kiểm kê đã chốt và xuất CSV.
 
 ## Thành viên
 
@@ -30,8 +30,8 @@ Mỗi tài khoản chỉ thao tác trên **các kho được phân quyền**. Nh
 | 1   | Quản lý kho, mặt hàng, đơn vị tính, lô hàng và quyền theo kho                                  | `/warehouses.php`, `/items.php`, `/access.php`   | Đã ghi PostgreSQL; quản trị viên quản lý danh mục |
 | 2   | Lập, kiểm tra, xác nhận phiếu nhập/xuất; tra cứu tồn từ dòng phát sinh                         | `/voucher-new.php`, `/voucher.php`, `/stock.php` | Đã lưu PostgreSQL; ghi sổ khi duyệt |
 | 3   | Điều chuyển giữa hai kho, có kiểm hàng, duyệt xuất và nhận hàng                                 | `/voucher-new.php?type=transfer`, `/voucher.php` | Đã ghi PostgreSQL theo giao dịch |
-| 4   | Tạo đợt kiểm kê, nhập số thực tế, tính chênh lệch, lập chứng từ điều chỉnh có lý do            | `/counts.php`, `/count.php`                      | Giao diện ✔ · CSDL ⏳ |
-| 5   | Lịch sử hàng theo kỳ, đối chiếu tồn, xuất CSV; sửa bằng chứng từ điều chỉnh, không xóa lịch sử | `/history.php`, `/export.php`, `/adjust-new.php` | Đã nối PostgreSQL; phát sinh điều chỉnh được ghi nối tiếp |
+| 4   | Tạo đợt kiểm kê, nhập số thực tế, tính chênh lệch, lập chứng từ điều chỉnh có lý do            | `/counts.php`, `/count.php`                      | Đã ghi PostgreSQL; chốt theo tồn mới nhất |
+| 5   | Lịch sử hàng theo kỳ, đối chiếu tồn, xuất CSV; sửa bằng chứng từ điều chỉnh, không xóa lịch sử | `/history.php`, `/export.php`, `/adjust-new.php` | Đã ghi PostgreSQL; lịch sử chỉ nối thêm |
 
 ## Luồng hoạt động
 
@@ -72,8 +72,12 @@ flowchart TD
     L --> M{Nhận đủ?}
     M -->|Đủ| N[Cộng tồn kho đến và đóng phiếu]
     M -->|Thiếu| O[Cộng phần nhận được, lưu yêu cầu bổ sung]
+    O --> Q[Kho đi lập phiếu gửi bù liên kết]
+    Q --> R[Kiểm hàng, duyệt xuất, kho đến xác nhận]
+    R --> S{Đã bù đủ?}
+    S -->|Chưa| Q
+    S -->|Đủ| P[Đối chiếu tồn và lịch sử]
     N --> P[Đối chiếu tồn và lịch sử]
-    O --> P
 ```
 
 ### Luồng kiểm kê
@@ -93,7 +97,7 @@ flowchart TD
     I --> J
 ```
 
-> **Lưu ý:** Điều chuyển được ghi theo các giai đoạn có transaction riêng: duyệt xuất trừ tồn kho đi; xác nhận nhận hàng cộng đúng số thực nhận ở kho đến. Phần thiếu được lưu cùng phiếu để kho đi xử lý bổ sung. Phiếu nhập/xuất thường được lưu nháp và chỉ ghi phát sinh sau khi duyệt. Chốt kiểm kê, phiếu điều chỉnh và các dòng phát sinh được ghi trong một giao dịch.
+> **Lưu ý:** Điều chuyển được ghi theo các giai đoạn có transaction riêng: duyệt xuất trừ tồn kho đi; xác nhận nhận hàng cộng đúng số thực nhận ở kho đến. Nếu thiếu, kho đi lập phiếu gửi bù liên kết và kho đến xác nhận như một lần giao mới. Phiếu nhập/xuất thường được lưu nháp và chỉ ghi phát sinh sau khi duyệt. Khi chốt kiểm kê, hệ thống lấy tồn mới nhất, tính delta và cập nhật cùng chứng từ kiểm kê trong một giao dịch.
 
 ### Hai yêu cầu kỹ thuật
 
@@ -152,13 +156,13 @@ psql -h 127.0.0.1 -U ptpmmnm_cntt_1812_nhom_5 -d ptpmmnm_cntt_1812_nhom_5
 \q
 ```
 
-Sau khi chạy các lệnh trên, database và schema sẽ sẵn sàng. Khi nâng cấp database đã cài từ phiên bản cũ, chạy lại `\i database/schema.sql` để tạo bảng workflow điều chuyển, khóa gửi lại và các dòng chứng từ điều chỉnh. Từ thư mục dự án, cấu hình kết nối ứng dụng:
+Sau khi chạy các lệnh trên, database và schema sẽ sẵn sàng. Khi nâng cấp database đã cài từ phiên bản cũ, chạy lại `\i database/schema.sql` để tạo các bảng workflow, gửi bù và điều chỉnh, cùng các cột phục vụ đối chiếu kiểm kê. Từ thư mục dự án, cấu hình kết nối ứng dụng:
 
 ```bash
 php tools/db-config.php
 ```
 
-Nhập cùng host, database, user và mật khẩu vừa tạo. Công cụ thử kết nối trước khi lưu `.local/db.json` với quyền riêng tư; tệp này đã được loại khỏi Git. Sau đó `bash app.sh run` sẽ đọc các bảng PostgreSQL. Bảng đang rỗng cho đến khi nạp dữ liệu mẫu. Phiếu nhập/xuất, điều chuyển, điều chỉnh và lịch sử phát sinh được lưu PostgreSQL; kiểm kê vẫn đang ở bản xem trước.
+Nhập cùng host, database, user và mật khẩu vừa tạo. Công cụ thử kết nối trước khi lưu `.local/db.json` với quyền riêng tư; tệp này đã được loại khỏi Git. Sau đó `bash app.sh run` sẽ đọc các bảng PostgreSQL. Bảng đang rỗng cho đến khi nạp dữ liệu mẫu. Phiếu nhập/xuất, điều chuyển, gửi bù, kiểm kê, điều chỉnh và lịch sử phát sinh được lưu PostgreSQL.
 
 Để nạp dữ liệu mẫu (chạy từ thư mục gốc của dự án):
 

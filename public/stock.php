@@ -47,7 +47,7 @@ require __DIR__ . '/../templates/header.php';
     <tr>
       <th>Mã</th><th>Mặt hàng</th><?php if ($byBatch): ?><th>Lô</th><th>Hạn dùng</th><?php endif; ?><th>ĐVT</th>
       <?php foreach ($allowed as $w): ?><th class="num"><?= e($w['code']) ?></th><?php endforeach; ?>
-      <th class="num">Tổng</th><?php if (!$byBatch): ?><th class="num">Tối thiểu</th><?php endif; ?><th></th>
+      <th class="num">Tổng</th><th></th>
     </tr>
   </thead>
   <tbody>
@@ -71,7 +71,6 @@ require __DIR__ . '/../templates/header.php';
             <td class="num"><?= qty($have) ?></td>
           <?php endforeach; ?>
           <td class="num <?= $sum < $item['min_stock'] ? 'qty-neg' : '' ?>"><strong><?= qty($sum) ?></strong></td>
-          <td class="num"><?= qty($item['min_stock']) ?></td>
           <td><a class="text-link" href="/history.php?item_id=<?= $item['id'] ?>">Lịch sử</a></td>
         </tr>
       <?php endif; ?>

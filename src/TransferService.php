@@ -22,11 +22,61 @@ final class TransferService
         $db = Database::connection();
         $db->beginTransaction();
         try {
+            $refId = isset($data['ref_id']) ? (int)$data['ref_id'] : null;
+            if ($refId !== null) {
+                $parentQuery = $db->prepare(
+                    "SELECT v.warehouse_id,v.to_warehouse_id,v.status,v.ref_id,tw.state FROM vouchers v "
+                    . "JOIN transfer_workflow tw ON tw.voucher_id=v.id "
+                    . "WHERE v.id=:id AND v.type='transfer' FOR UPDATE OF v,tw"
+                );
+                $parentQuery->execute(['id' => $refId]);
+                $parent = $parentQuery->fetch();
+                $existingQuery = $db->prepare('SELECT id FROM vouchers WHERE request_key=:key AND ref_id=:parent');
+                $existingQuery->execute(['key'=>$requestKey,'parent'=>$refId]);
+                $existingId = $existingQuery->fetchColumn();
+                if ($existingId !== false) {
+                    $db->commit();
+                    return ['id'=>(int)$existingId,'created'=>false];
+                }
+                if (!$parent || $parent['ref_id'] !== null || $parent['status'] !== 'confirmed' || $parent['state'] !== 'partial'
+                    || (int)$parent['warehouse_id'] !== (int)$data['warehouse_id']
+                    || (int)$parent['to_warehouse_id'] !== (int)$data['to_warehouse_id']) {
+                    throw new DomainException('TRANSFER_SUPPLEMENT_PARENT_INVALID');
+                }
+                $missingQuery = $db->prepare(
+                    'SELECT rl.missing_qty FROM transfer_receipt_lines rl '
+                    . 'JOIN voucher_lines vl ON vl.id=rl.voucher_line_id '
+                    . 'WHERE rl.voucher_id=:parent AND vl.batch_id=:batch AND vl.item_id=:item'
+                );
+                $receivedQuery = $db->prepare(
+                    "SELECT COALESCE(SUM(rl.received_qty),0) FROM transfer_receipt_lines rl "
+                    . "JOIN vouchers child ON child.id=rl.voucher_id AND child.ref_id=:parent AND child.type='transfer' "
+                    . 'JOIN voucher_lines vl ON vl.id=rl.voucher_line_id WHERE vl.batch_id=:batch AND vl.item_id=:item'
+                );
+                $reservedQuery = $db->prepare(
+                    "SELECT COALESCE(SUM(vl.qty),0) FROM vouchers child "
+                    . "JOIN transfer_workflow tw ON tw.voucher_id=child.id AND tw.state IN ('draft','checked','in_transit') "
+                    . "JOIN voucher_lines vl ON vl.voucher_id=child.id "
+                    . "WHERE child.ref_id=:parent AND child.type='transfer' AND vl.batch_id=:batch AND vl.item_id=:item"
+                );
+                foreach ($data['lines'] as $line) {
+                    $params = ['parent'=>$refId,'batch'=>$line['batch_id'],'item'=>$line['item_id']];
+                    $missingQuery->execute($params);
+                    $missing = $missingQuery->fetchColumn();
+                    $receivedQuery->execute($params);
+                    $received = (int)$receivedQuery->fetchColumn();
+                    $reservedQuery->execute($params);
+                    $reserved = (int)$reservedQuery->fetchColumn();
+                    if ($missing === false || (int)$line['qty'] > max(0, (int)$missing - $received - $reserved)) {
+                        throw new DomainException('TRANSFER_SUPPLEMENT_QTY_INVALID');
+                    }
+                }
+            }
             $code = 'PC-' . date('Ymd') . '-' . strtoupper(bin2hex(random_bytes(8)));
             $insert = $db->prepare(
                 "INSERT INTO vouchers
-                    (code, type, status, warehouse_id, to_warehouse_id, created_by, note, request_key)
-                 VALUES (:code, 'transfer', 'draft', :warehouse, :destination, :created_by, :note, :request_key)
+                    (code, type, status, warehouse_id, to_warehouse_id, created_by, note, ref_id, request_key)
+                 VALUES (:code, 'transfer', 'draft', :warehouse, :destination, :created_by, :note, :ref_id, :request_key)
                  ON CONFLICT (request_key) DO NOTHING
                  RETURNING id"
             );
@@ -36,6 +86,7 @@ final class TransferService
                 'destination' => $data['to_warehouse_id'],
                 'created_by' => $createdBy,
                 'note' => $data['note'],
+                'ref_id' => $refId,
                 'request_key' => $requestKey,
             ]);
             $voucherId = $insert->fetchColumn();
@@ -126,11 +177,7 @@ final class TransferService
                 throw new DomainException('VOUCHER_LINES_EMPTY');
             }
 
-            // Serialize all outgoing transfers for the same warehouse and batch.
-            $lock = $db->prepare('SELECT pg_advisory_xact_lock(hashtext(:lock_key))');
-            foreach ($lines as $line) {
-                $lock->execute(['lock_key' => 'stock:' . $voucher['warehouse_id'] . ':' . $line['batch_id']]);
-            }
+            InventoryGuard::lockWarehouses($db, [$voucher['warehouse_id']]);
 
             $balanceQuery = $db->prepare(
                 'SELECT COALESCE(SUM(qty), 0) FROM stock_movements
@@ -154,8 +201,8 @@ final class TransferService
             }
 
             $movementInsert = $db->prepare(
-                'INSERT INTO stock_movements (voucher_id, warehouse_id, item_id, batch_id, qty)
-                 VALUES (:voucher_id, :warehouse_id, :item_id, :batch_id, :qty)'
+                'INSERT INTO stock_movements (voucher_id, warehouse_id, item_id, batch_id, qty, occurred_at)
+                 VALUES (:voucher_id, :warehouse_id, :item_id, :batch_id, :qty, clock_timestamp())'
             );
             foreach ($lines as $line) {
                 $common = [
@@ -227,7 +274,7 @@ final class TransferService
             foreach ($lines as $line) {
                 $lineId = (int)$line['id'];
                 $checked = $checkedQty[$lineId] ?? null;
-                if (!is_int($checked) || $checked < 0 || $checked > (int)$line['qty']) {
+                if (!is_int($checked) || $checked < 0) {
                     throw new DomainException('TRANSFER_CHECK_QTY_INVALID');
                 }
                 $note = is_string($notes[$lineId] ?? null) ? trim($notes[$lineId]) : '';
@@ -235,6 +282,9 @@ final class TransferService
                     throw new DomainException('TRANSFER_NOTE_TOO_LONG');
                 }
                 $planned = (int)$line['qty'];
+                if ($checked !== $planned && $note === '') {
+                    throw new DomainException('TRANSFER_CHECK_REASON_REQUIRED');
+                }
                 $insert->execute([
                     'line_id' => $lineId,
                     'voucher_id' => $voucherId,
@@ -335,6 +385,8 @@ final class TransferService
                 throw new DomainException('TRANSFER_STATE_CHANGED');
             }
 
+            InventoryGuard::lockWarehouses($db, [(int)$voucher['to_warehouse_id']]);
+
             $lineQuery = $db->prepare('SELECT id, item_id, batch_id, qty FROM voucher_lines WHERE voucher_id = :id ORDER BY id FOR UPDATE');
             $lineQuery->execute(['id' => $voucherId]);
             $lines = $lineQuery->fetchAll();
@@ -344,8 +396,8 @@ final class TransferService
                  VALUES (:line_id, :voucher_id, :received, :missing, :note, :user)'
             );
             $movementInsert = $db->prepare(
-                'INSERT INTO stock_movements (voucher_id, warehouse_id, item_id, batch_id, qty)
-                 VALUES (:voucher_id, :warehouse_id, :item_id, :batch_id, :qty)'
+                'INSERT INTO stock_movements (voucher_id, warehouse_id, item_id, batch_id, qty, occurred_at)
+                 VALUES (:voucher_id, :warehouse_id, :item_id, :batch_id, :qty, clock_timestamp())'
             );
             $hasMissing = false;
             foreach ($lines as $line) {
@@ -391,6 +443,35 @@ final class TransferService
             $update->execute(['state' => $state, 'user' => $receiver['id'], 'id' => $voucherId]);
             if ($update->rowCount() !== 1) {
                 throw new DomainException('TRANSFER_STATE_CHANGED');
+            }
+            if ($voucher['ref_id'] !== null) {
+                $parentId = (int)$voucher['ref_id'];
+                $remainingQuery = $db->prepare(
+                    'SELECT vl.item_id,vl.batch_id,rl.missing_qty FROM transfer_receipt_lines rl '
+                    . 'JOIN voucher_lines vl ON vl.id=rl.voucher_line_id WHERE rl.voucher_id=:parent AND rl.missing_qty>0'
+                );
+                $remainingQuery->execute(['parent'=>$parentId]);
+                $supplementReceived = $db->prepare(
+                    "SELECT COALESCE(SUM(rl.received_qty),0) FROM transfer_receipt_lines rl "
+                    . "JOIN vouchers child ON child.id=rl.voucher_id AND child.ref_id=:parent AND child.type='transfer' "
+                    . 'JOIN voucher_lines vl ON vl.id=rl.voucher_line_id WHERE vl.item_id=:item AND vl.batch_id=:batch'
+                );
+                $allMissingCovered = true;
+                foreach ($remainingQuery->fetchAll(PDO::FETCH_ASSOC) as $missingLine) {
+                    $supplementReceived->execute(['parent'=>$parentId,'item'=>(int)$missingLine['item_id'],
+                        'batch'=>(int)$missingLine['batch_id']]);
+                    if ((int)$supplementReceived->fetchColumn() < (int)$missingLine['missing_qty']) {
+                        $allMissingCovered = false;
+                        break;
+                    }
+                }
+                if ($allMissingCovered) {
+                    $completeParent = $db->prepare(
+                        "UPDATE transfer_workflow SET state='received',received_by=:user,received_at=now() "
+                        . "WHERE voucher_id=:parent AND state='partial'"
+                    );
+                    $completeParent->execute(['user'=>$receiver['id'],'parent'=>$parentId]);
+                }
             }
             $db->commit();
             return ['state' => $state];

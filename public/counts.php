@@ -20,7 +20,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } catch (DomainException $e) {
         $createError = $e->getMessage() === 'COUNT_NEGATIVE_SYSTEM_STOCK'
             ? 'Không thể tạo đợt kiểm kê vì kho đang có số tồn âm. Hãy đối chiếu sổ phát sinh trước.'
-            : 'Bạn không có quyền tạo đợt kiểm kê tại kho này.';
+            : ($e->getMessage() === 'COUNT_ALREADY_OPEN'
+                ? 'Kho này đã có một đợt kiểm kê đang mở.'
+                : 'Bạn không có quyền tạo đợt kiểm kê tại kho này.');
     } catch (Throwable $e) {
         error_log('Stock count creation failed: ' . $e->getMessage());
         $createError = 'Không lưu được đợt kiểm kê. Vui lòng thử lại hoặc kiểm tra log máy chủ.';
@@ -51,7 +53,7 @@ require __DIR__ . '/../templates/header.php';
   <thead><tr><th>Mã</th><th>Kho</th><th>Ngày tạo</th><th>Người phụ trách</th><th class="num">Số dòng</th><th class="num">Dòng lệch</th><th>Trạng thái</th></tr></thead>
   <tbody>
     <?php foreach (array_reverse($counts) as $c):
-        $diffs = array_filter($c['lines'], fn($l) => $l['actual_qty'] !== null && $l['actual_qty'] !== $l['system_qty']); ?>
+        $diffs = array_filter($c['lines'], fn($l) => $l['actual_qty'] !== null && $l['actual_qty'] !== ($l['closing_system_qty'] ?? $l['system_qty'])); ?>
       <tr>
         <td><a href="/count.php?id=<?= $c['id'] ?>"><strong><?= e($c['code']) ?></strong></a></td>
         <td><?= e(warehouseName($c['warehouse_id'])) ?></td>

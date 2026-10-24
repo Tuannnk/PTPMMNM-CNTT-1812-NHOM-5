@@ -133,7 +133,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 forbid($e->getMessage());
             }
             http_response_code(409);
-            $workflowError = 'Thao tác không thể hoàn tất: phiếu có thể đã được xử lý hoặc dữ liệu gửi lên không hợp lệ.';
+            $workflowError = match ($e->getMessage()) {
+                'TRANSFER_CHECK_REASON_REQUIRED' => 'Nhập lý do kiểm đếm cho từng dòng có số lượng không khớp rồi gửi lại.',
+                'TRANSFER_SHORTAGE_REASON_REQUIRED' => 'Nhập lý do thiếu cho từng dòng nhận thiếu rồi gửi lại.',
+                default => 'Thao tác không thể hoàn tất: phiếu có thể đã được xử lý hoặc dữ liệu gửi lên không hợp lệ.',
+            };
         } catch (Throwable $e) {
             http_response_code(409);
             $workflowError = 'Không thể lưu thao tác điều chuyển. Giao dịch đã được hủy nếu có lỗi khi ghi dữ liệu.';
@@ -205,6 +209,9 @@ if (!$movementRows && $voucher['type'] === 'transfer'
     $movementRows = $planned;
 }
 $ref = $voucher['ref_id'] ? Store::find('vouchers', $voucher['ref_id']) : null;
+$relatedSupplements = $voucher['type'] === 'transfer'
+    ? array_values(array_filter(Store::all('vouchers'), fn($candidate) => $candidate['ref_id'] === $voucher['id'] && $candidate['type'] === 'transfer'))
+    : [];
 $title = $voucher['code'];
 $active = 'vouchers';
 require __DIR__ . '/../templates/header.php';
@@ -236,6 +243,10 @@ require __DIR__ . '/../templates/header.php';
       </form>
     </div>
   <?php endif; ?>
+  <?php if ($voucher['type'] === 'transfer' && $voucher['ref_id'] === null && ($voucher['transfer_state'] ?? '') === 'partial'
+      && $voucher['status'] === 'confirmed' && $user['role'] === 'staff' && $canSeeSource): ?>
+    <a class="button button--ghost" href="/transfer-supplement.php?ref_id=<?= $voucher['id'] ?>">Lập phiếu gửi bù hàng thiếu</a>
+  <?php endif; ?>
 </header>
 
 <?php if ($negative): ?>
@@ -259,12 +270,17 @@ require __DIR__ . '/../templates/header.php';
     <?php endif; ?>
     <div><dt>Người lập</dt><dd><?= e(userName($voucher['created_by'])) ?> · <?= e(dateOnly($voucher['created_at'])) ?></dd></div>
     <div><dt>Người xác nhận</dt><dd><?= e(userName($voucher['confirmed_by'])) ?><?= $voucher['confirmed_at'] ? ' · ' . e(dateOnly($voucher['confirmed_at'])) : '' ?></dd></div>
-    <?php if ($voucher['status'] === 'rejected'): ?>
+    <?php if ($voucher['status'] === 'rejected' && $voucher['type'] !== 'transfer'): ?>
       <div><dt>Người không duyệt</dt><dd><?= e(userName($voucher['rejected_by'])) ?><?= $voucher['rejected_at'] ? ' · ' . e(dateOnly($voucher['rejected_at'])) : '' ?></dd></div>
       <div><dt>Lý do không duyệt</dt><dd><?= e($voucher['reject_reason']) ?></dd></div>
     <?php endif; ?>
-    <?php if ($voucher['type'] === 'transfer' && $voucher['transfer_checked_by']): ?><div><dt>Người kiểm hàng</dt><dd><?= e(userName((int)$voucher['transfer_checked_by'])) ?></dd></div><?php endif; ?>
+    <?php if ($voucher['type'] === 'transfer' && $voucher['transfer_checked_by']): ?><div><dt>Người kiểm hàng</dt><dd><?= e(userName($voucher['transfer_checked_by'])) ?><?= $voucher['transfer_checked_at'] ? ' · ' . e(dateOnly($voucher['transfer_checked_at'])) : '' ?></dd></div><?php endif; ?>
     <?php if ($voucher['type'] === 'transfer' && $voucher['transfer_received_by']): ?><div><dt>Người nhận hàng</dt><dd><?= e(userName((int)$voucher['transfer_received_by'])) ?><?= $voucher['transfer_received_at'] ? ' · ' . e(dateOnly($voucher['transfer_received_at'])) : '' ?></dd></div><?php endif; ?>
+    <?php if ($voucher['type'] === 'transfer' && $voucher['confirmed_by']): ?><div><dt>Người duyệt xuất</dt><dd><?= e(userName($voucher['confirmed_by'])) ?><?= $voucher['confirmed_at'] ? ' · ' . e(dateOnly($voucher['confirmed_at'])) : '' ?></dd></div><?php elseif ($voucher['type'] === 'transfer' && ($voucher['transfer_state'] ?? '') === 'cancelled'): ?><div><dt>Người duyệt xuất</dt><dd>Chưa duyệt — phiếu đã bị hủy trước khi xuất</dd></div><?php endif; ?>
+    <?php if ($voucher['type'] === 'transfer' && ($voucher['transfer_state'] ?? '') === 'cancelled'): ?>
+      <div><dt>Người hủy phiếu</dt><dd><?= e(userName($voucher['transfer_cancelled_by'])) ?><?= $voucher['transfer_cancelled_at'] ? ' · ' . e(dateOnly($voucher['transfer_cancelled_at'])) : '' ?></dd></div>
+      <div><dt>Lý do hủy</dt><dd><?= e($voucher['transfer_cancel_reason'] ?: 'Không có lý do được lưu.') ?></dd></div>
+    <?php endif; ?>
     <?php if ($ref): ?><div><dt>Chứng từ gốc</dt><dd><a href="/voucher.php?id=<?= $ref['id'] ?>"><?= e($ref['code']) ?></a></dd></div><?php endif; ?>
   </dl>
 </section>
@@ -301,13 +317,13 @@ require __DIR__ . '/../templates/header.php';
     <form method="post" class="form">
       <?= csrfInput() ?><input type="hidden" name="action" value="check-transfer">
       <div class="table-wrap"><table class="table table--form">
-        <thead><tr><th>Mặt hàng</th><th>Lô</th><th class="num">Theo phiếu</th><th class="num">Đã soạn</th><th>Ghi chú kiểm</th></tr></thead>
+        <thead><tr><th>Mặt hàng</th><th>Lô</th><th class="num">Theo phiếu</th><th class="num">Đã soạn</th><th>Lý do nếu số lượng không khớp</th></tr></thead>
         <tbody><?php foreach ($lines as $line): $item = $items[$line['item_id']]; ?>
           <tr>
             <td><?= e($item['name']) ?></td><td><?= e($batches[$line['batch_id']]['code']) ?></td>
             <td class="num"><?= qty($line['qty']) ?></td>
             <td class="num"><input type="number" name="checked_qty[<?= $line['id'] ?>]" min="0" max="<?= $line['qty'] ?>" step="1" required value="<?= $line['qty'] ?>" aria-label="Số lượng đã soạn"></td>
-            <td><input name="check_note[<?= $line['id'] ?>]" maxlength="255" aria-label="Ghi chú kiểm hàng"></td>
+            <td><input name="check_note[<?= $line['id'] ?>]" maxlength="255" aria-label="Lý do kiểm đếm" placeholder="Bắt buộc nếu thiếu hoặc thừa"></td>
           </tr>
         <?php endforeach; ?></tbody>
       </table></div>
@@ -320,7 +336,7 @@ require __DIR__ . '/../templates/header.php';
     <div class="table-wrap"><table class="table table--compact">
       <thead><tr><th>Mặt hàng</th><th>Lô</th><th class="num">Theo phiếu</th><th class="num">Đã soạn</th><th>Ghi chú</th></tr></thead>
       <tbody><?php foreach ($lines as $line): $check = $checkedLines[$line['id']] ?? null; if (!$check) continue; ?>
-        <tr><td><?= e($items[$line['item_id']]['name']) ?></td><td><?= e($batches[$line['batch_id']]['code']) ?></td><td class="num"><?= qty($line['qty']) ?></td><td class="num"><?= qty((int)$check['checked_qty']) ?></td><td><?= e($check['note'] ?: '—') ?></td></tr>
+        <tr><td><?= e($items[$line['item_id']]['name']) ?></td><td><?= e($batches[$line['batch_id']]['code']) ?></td><td class="num"><?= qty($line['qty']) ?></td><td class="num"><?= qty((int)$check['checked_qty']) ?></td><td><?= e($check['note'] ?: ((int)$check['checked_qty'] !== (int)$line['qty'] ? 'Số lượng kiểm đếm không khớp với phiếu.' : '—')) ?></td></tr>
       <?php endforeach; ?></tbody>
     </table></div>
   <?php endif; ?>
@@ -356,7 +372,11 @@ require __DIR__ . '/../templates/header.php';
   <?php if ($receiptLines): ?>
     <h3>Biên bản nhận hàng tại kho đến</h3>
     <?php $missingTotal = array_sum(array_map(fn($receipt) => (int)$receipt['missing_qty'], $receiptLines)); ?>
-    <?php if ($missingTotal > 0): ?><p class="error-summary">Kho đi có yêu cầu bổ sung tổng <?= qty($missingTotal) ?> đơn vị. Chi tiết số thiếu và lý do bên dưới; yêu cầu cũng hiện trên bảng điều khiển kho đi.</p><?php endif; ?>
+    <?php if ($missingTotal > 0): ?><p class="<?= ($voucher['transfer_state'] ?? '') === 'received' ? 'notice' : 'error-summary' ?>">
+      <?= ($voucher['transfer_state'] ?? '') === 'received'
+          ? 'Đã nhận thiếu ở lần giao đầu; phần thiếu đã được bù đủ qua phiếu điều chuyển liên kết.'
+          : 'Kho đến ghi nhận thiếu tổng ' . qty($missingTotal) . ' đơn vị. Kho đi có thể lập phiếu gửi bù; yêu cầu cũng hiện trên bảng điều khiển kho đi.' ?>
+    </p><?php endif; ?>
     <div class="table-wrap"><table class="table table--compact">
       <thead><tr><th>Mặt hàng</th><th>Lô</th><th class="num">Đã gửi</th><th class="num">Đã nhận</th><th class="num">Thiếu / yêu cầu bổ sung</th><th>Ghi chú</th></tr></thead>
       <tbody><?php foreach ($lines as $line): $receipt = $receiptLines[$line['id']] ?? null; if (!$receipt) continue; ?>
@@ -369,6 +389,15 @@ require __DIR__ . '/../templates/header.php';
     <p class="error-summary">Phiếu đã hủy: <?= e($voucher['transfer_cancel_reason'] ?: 'Số lượng kiểm đếm không khớp.') ?></p>
   <?php endif; ?>
 </section>
+<?php endif; ?>
+
+<?php if ($relatedSupplements): ?>
+<section class="card"><h2>Phiếu gửi bù liên kết</h2><ul class="list">
+  <?php foreach ($relatedSupplements as $supplement): ?><li>
+    <a href="/voucher.php?id=<?= $supplement['id'] ?>"><strong><?= e($supplement['code']) ?></strong></a>
+    <?= voucherStatusBadge($supplement) ?> · <?= e($supplement['created_at'] ? dateOnly($supplement['created_at']) : '') ?>
+  </li><?php endforeach; ?>
+</ul></section>
 <?php endif; ?>
 
 <section class="card">

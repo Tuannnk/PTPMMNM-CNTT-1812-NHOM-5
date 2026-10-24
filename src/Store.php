@@ -24,7 +24,9 @@ final class Store
         $db = Database::connection();
         $sql = $table === 'vouchers'
             ? 'SELECT v.*, tw.state AS transfer_state, tw.cancel_reason AS transfer_cancel_reason,
-                      tw.checked_by AS transfer_checked_by, tw.received_by AS transfer_received_by,
+                      tw.checked_by AS transfer_checked_by, tw.checked_at AS transfer_checked_at,
+                      tw.received_by AS transfer_received_by,
+                      tw.cancelled_by AS transfer_cancelled_by, tw.cancelled_at AS transfer_cancelled_at,
                       tw.dispatched_at AS transfer_dispatched_at, tw.received_at AS transfer_received_at
                FROM vouchers v LEFT JOIN transfer_workflow tw ON tw.voucher_id = v.id ORDER BY v.id'
             : 'SELECT * FROM ' . $table . ' ORDER BY id';
@@ -133,12 +135,14 @@ final class Store
     private static function normalize(array $row): array
     {
         foreach (['id', 'user_id', 'warehouse_id', 'item_id', 'batch_id', 'voucher_id', 'count_id', 'ref_movement_id',
-            'created_by', 'confirmed_by', 'to_warehouse_id', 'ref_id', 'adjust_voucher_id'] as $key) {
+            'created_by', 'confirmed_by', 'rejected_by', 'checked_by', 'received_by', 'cancelled_by',
+            'transfer_checked_by', 'transfer_received_by', 'transfer_cancelled_by',
+            'to_warehouse_id', 'ref_id', 'adjust_voucher_id'] as $key) {
             if (array_key_exists($key, $row) && $row[$key] !== null) {
                 $row[$key] = (int)$row[$key];
             }
         }
-        foreach (['qty', 'min_stock', 'system_qty', 'actual_qty'] as $key) {
+        foreach (['qty', 'min_stock', 'system_qty', 'closing_system_qty', 'actual_qty'] as $key) {
             if (array_key_exists($key, $row) && $row[$key] !== null) {
                 $row[$key] = (int)$row[$key];
             }

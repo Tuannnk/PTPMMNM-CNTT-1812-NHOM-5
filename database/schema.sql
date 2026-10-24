@@ -197,6 +197,9 @@ CREATE TABLE IF NOT EXISTS stock_counts (
     adjust_voucher_id bigint UNIQUE REFERENCES vouchers(id),
     CHECK ((status = 'closed' AND adjust_voucher_id IS NOT NULL) OR status <> 'closed')
 );
+ALTER TABLE stock_counts ADD COLUMN IF NOT EXISTS closed_at timestamptz;
+UPDATE stock_counts sc SET closed_at=COALESCE(v.confirmed_at,sc.created_at)
+FROM vouchers v WHERE sc.adjust_voucher_id=v.id AND sc.status='closed' AND sc.closed_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS stock_count_lines (
     id          bigserial PRIMARY KEY,
@@ -209,6 +212,7 @@ CREATE TABLE IF NOT EXISTS stock_count_lines (
     FOREIGN KEY (batch_id, item_id) REFERENCES batches(id, item_id),
     UNIQUE (count_id, batch_id)
 );
+ALTER TABLE stock_count_lines ADD COLUMN IF NOT EXISTS closing_system_qty numeric(14, 3) CHECK (closing_system_qty >= 0);
 
 CREATE INDEX IF NOT EXISTS idx_vouchers_warehouse_created
     ON vouchers (warehouse_id, created_at DESC);

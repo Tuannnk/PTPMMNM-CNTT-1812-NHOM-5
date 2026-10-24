@@ -96,15 +96,7 @@ final class VoucherService
                 throw new RuntimeException('LINES_EMPTY');
             }
 
-            $lockKeys = array_values(array_unique(array_map(
-                static fn(array $line): string => $voucher['warehouse_id'] . ':' . $line['batch_id'],
-                $lines
-            )));
-            sort($lockKeys, SORT_STRING);
-            $lock = $db->prepare('SELECT pg_advisory_xact_lock(hashtextextended(:lock_key, 0))');
-            foreach ($lockKeys as $key) {
-                $lock->execute(['lock_key' => $key]);
-            }
+            InventoryGuard::lockWarehouses($db, [$voucher['warehouse_id']]);
 
             $balanceQuery = $db->prepare(
                 'SELECT COALESCE(SUM(qty),0) FROM stock_movements WHERE warehouse_id=:warehouse AND batch_id=:batch'
@@ -125,8 +117,8 @@ final class VoucherService
             }
 
             $movement = $db->prepare(
-                'INSERT INTO stock_movements (voucher_id,warehouse_id,item_id,batch_id,qty) '
-                . 'VALUES (:voucher,:warehouse,:item,:batch,:qty)'
+                'INSERT INTO stock_movements (voucher_id,warehouse_id,item_id,batch_id,qty,occurred_at) '
+                . 'VALUES (:voucher,:warehouse,:item,:batch,:qty,clock_timestamp())'
             );
             foreach ($lines as $line) {
                 $qty = $voucher['type'] === 'out' ? -$line['qty'] : $line['qty'];
