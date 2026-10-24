@@ -73,7 +73,7 @@ require __DIR__ . '/../templates/header.php';
         <td><?= e($v['created_at']) ?></td>
         <td><?= e(userName($v['created_by'])) ?></td>
         <td class="num"><?= count(Store::linesOf($v['id'])) ?></td>
-        <td><?= statusBadge($v['status']) ?></td>
+        <td><?= voucherStatusBadge($v) ?></td>
       </tr>
     <?php endforeach; ?>
   </tbody>
