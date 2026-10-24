@@ -49,7 +49,7 @@ require __DIR__ . '/../templates/header.php';
             <a href="/voucher.php?id=<?= $v['id'] ?>"><strong><?= e($v['code']) ?></strong></a>
             <?= typeBadge($v['type']) ?>
             <?= voucherStatusBadge($v) ?>
-            <span class="muted"><?= e(warehouseName($v['warehouse_id'])) ?><?= $v['to_warehouse_id'] ? ' → ' . e(warehouseName($v['to_warehouse_id'])) : '' ?> · <?= e($v['created_at']) ?></span>
+            <span class="muted"><?= e(warehouseName($v['warehouse_id'])) ?><?= $v['to_warehouse_id'] ? ' → ' . e(warehouseName($v['to_warehouse_id'])) : '' ?> · <?= e(dateOnly($v['created_at'])) ?></span>
           </li>
         <?php endforeach; ?>
       </ul>
@@ -80,7 +80,7 @@ require __DIR__ . '/../templates/header.php';
       <tbody>
         <?php foreach ($recent as $m): ?>
           <tr>
-            <td><?= e($m['at']) ?></td>
+            <td><?= e(dateOnly($m['at'])) ?></td>
             <td><?= e(Store::find('warehouses', $m['warehouse_id'])['code']) ?></td>
             <td><?= e($items[$m['item_id']]['name']) ?></td>
             <td class="num"><?= signedQty($m['qty']) ?></td>

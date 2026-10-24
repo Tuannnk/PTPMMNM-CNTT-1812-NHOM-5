@@ -47,7 +47,7 @@ final class StockLedger
                 'in' => [[$voucher['warehouse_id'], $qty]],
                 'out' => [[$voucher['warehouse_id'], -$qty]],
                 'transfer' => [[$voucher['warehouse_id'], -$qty], [$voucher['to_warehouse_id'], $qty]],
-                'adjust' => [[$voucher['warehouse_id'], $qty]],
+                'adjust' => [[$line['warehouse_id'] ?? $voucher['warehouse_id'], $qty]],
                 default => [],
             };
             foreach ($pairs as [$warehouseId, $signed]) {

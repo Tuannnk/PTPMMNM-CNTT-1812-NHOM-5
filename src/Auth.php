@@ -77,6 +77,15 @@ function canConfirm(array $user, array $voucher): bool
         return ($voucher['transfer_state'] ?? 'draft') === 'checked'
             && canAccessWarehouse($user, $voucher['to_warehouse_id']);
     }
+    if ($voucher['type'] === 'adjust') {
+        $query = Database::connection()->prepare(
+            'SELECT DISTINCT warehouse_id FROM adjustment_lines WHERE voucher_id = :voucher_id'
+        );
+        $query->execute(['voucher_id' => $voucher['id']]);
+        $warehouses = array_map('intval', $query->fetchAll(PDO::FETCH_COLUMN));
+        return $warehouses !== []
+            && !array_filter($warehouses, fn($id) => !canAccessWarehouse($user, $id));
+    }
     return true;
 }
 

@@ -85,6 +85,29 @@ final class Store
 
     public static function linesOf(int $voucherId): array
     {
+        $voucher = self::find('vouchers', $voucherId);
+        if ($voucher !== null && $voucher['type'] === 'adjust') {
+            $query = Database::connection()->prepare(
+                'SELECT id, voucher_id, warehouse_id, item_id, batch_id, ref_movement_id, qty, reason
+                 FROM adjustment_lines WHERE voucher_id = :voucher_id ORDER BY id'
+            );
+            $query->execute(['voucher_id' => $voucherId]);
+            $adjustmentLines = array_map([self::class, 'normalize'], $query->fetchAll());
+            if ($adjustmentLines) {
+                return $adjustmentLines;
+            }
+            // Compatibility for older positive-only adjustment vouchers.
+            $legacyLines = array_values(array_filter(
+                self::all('voucher_lines'),
+                fn($line) => $line['voucher_id'] === $voucherId
+            ));
+            foreach ($legacyLines as &$line) {
+                $line['warehouse_id'] = $voucher['warehouse_id'];
+                $line['reason'] = '(chứng từ điều chỉnh cũ)';
+            }
+            unset($line);
+            return $legacyLines;
+        }
         return array_values(array_filter(
             self::all('voucher_lines'),
             fn($line) => $line['voucher_id'] === $voucherId
@@ -109,9 +132,8 @@ final class Store
 
     private static function normalize(array $row): array
     {
-        foreach (['id', 'user_id', 'warehouse_id', 'item_id', 'batch_id', 'voucher_id', 'count_id',
-            'created_by', 'confirmed_by', 'rejected_by', 'checked_by', 'received_by', 'cancelled_by',
-            'to_warehouse_id', 'ref_id', 'adjust_voucher_id'] as $key) {
+        foreach (['id', 'user_id', 'warehouse_id', 'item_id', 'batch_id', 'voucher_id', 'count_id', 'ref_movement_id',
+            'created_by', 'confirmed_by', 'to_warehouse_id', 'ref_id', 'adjust_voucher_id'] as $key) {
             if (array_key_exists($key, $row) && $row[$key] !== null) {
                 $row[$key] = (int)$row[$key];
             }

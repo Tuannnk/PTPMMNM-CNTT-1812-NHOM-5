@@ -55,7 +55,7 @@ require __DIR__ . '/../templates/header.php';
       <tr>
         <td><a href="/count.php?id=<?= $c['id'] ?>"><strong><?= e($c['code']) ?></strong></a></td>
         <td><?= e(warehouseName($c['warehouse_id'])) ?></td>
-        <td><?= e($c['created_at']) ?></td>
+        <td><?= e(dateOnly($c['created_at'])) ?></td>
         <td><?= e(userName($c['created_by'])) ?></td>
         <td class="num"><?= count($c['lines']) ?></td>
         <td class="num"><?= $c['status'] === 'closed' ? count($diffs) : '—' ?></td>

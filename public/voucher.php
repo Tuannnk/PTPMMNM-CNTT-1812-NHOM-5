@@ -15,6 +15,10 @@ if ($voucher['type'] === 'transfer' ? !$canSeeSource && !$canSeeDestination : !$
 }
 
 $lines = Store::linesOf($voucher['id']);
+if ($voucher['type'] === 'adjust') {
+    $lineWarehouses = array_unique(array_column($lines, 'warehouse_id'));
+    if (!$lineWarehouses || array_filter($lineWarehouses, fn($id) => !canAccessWarehouse($user, (int)$id))) forbid();
+}
 $items = Store::indexed('items');
 $batches = Store::indexed('batches');
 $balances = StockLedger::balances(Store::all('stock_movements'));
@@ -167,9 +171,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         } elseif ($decision === 'confirm') {
             try {
-                $outcome = VoucherService::confirm($voucher['id'], $user);
+                $outcome = $voucher['type'] === 'adjust'
+                    ? AdjustmentService::confirm($voucher['id'], $user)
+                    : VoucherService::confirm($voucher['id'], $user);
                 $negative = $outcome['negative'];
-                if (!$negative) {
+                if (!$negative && ($voucher['type'] !== 'adjust' || !empty($outcome['confirmed']))) {
                     flash(!empty($outcome['already_confirmed'])
                         ? 'Phiếu đã được xác nhận trước đó; không ghi phát sinh trùng.'
                         : 'Đã phê duyệt phiếu và ghi phát sinh vào sổ kho.');
@@ -219,7 +225,7 @@ require __DIR__ . '/../templates/header.php';
     <div class="actions">
       <form method="post">
         <?= csrfInput() ?><input type="hidden" name="decision" value="confirm">
-        <button class="button">Phê duyệt và ghi sổ</button>
+        <button class="button"><?= $voucher['type']==='adjust'?'Xác nhận điều chỉnh và ghi sổ':'Phê duyệt và ghi sổ' ?></button>
       </form>
       <form method="post" class="reject-form">
         <?= csrfInput() ?><input type="hidden" name="decision" value="reject">
@@ -251,14 +257,14 @@ require __DIR__ . '/../templates/header.php';
     <?php if ($voucher['type'] === 'transfer'): ?>
       <div><dt>Kho đến</dt><dd><?= e(warehouseName($voucher['to_warehouse_id'])) ?></dd></div>
     <?php endif; ?>
-    <div><dt>Người lập</dt><dd><?= e(userName($voucher['created_by'])) ?> · <?= e($voucher['created_at']) ?></dd></div>
-    <div><dt>Người xác nhận</dt><dd><?= e(userName($voucher['confirmed_by'])) ?><?= $voucher['confirmed_at'] ? ' · ' . e($voucher['confirmed_at']) : '' ?></dd></div>
+    <div><dt>Người lập</dt><dd><?= e(userName($voucher['created_by'])) ?> · <?= e(dateOnly($voucher['created_at'])) ?></dd></div>
+    <div><dt>Người xác nhận</dt><dd><?= e(userName($voucher['confirmed_by'])) ?><?= $voucher['confirmed_at'] ? ' · ' . e(dateOnly($voucher['confirmed_at'])) : '' ?></dd></div>
     <?php if ($voucher['status'] === 'rejected'): ?>
-      <div><dt>Người không duyệt</dt><dd><?= e(userName($voucher['rejected_by'])) ?><?= $voucher['rejected_at'] ? ' · ' . e($voucher['rejected_at']) : '' ?></dd></div>
+      <div><dt>Người không duyệt</dt><dd><?= e(userName($voucher['rejected_by'])) ?><?= $voucher['rejected_at'] ? ' · ' . e(dateOnly($voucher['rejected_at'])) : '' ?></dd></div>
       <div><dt>Lý do không duyệt</dt><dd><?= e($voucher['reject_reason']) ?></dd></div>
     <?php endif; ?>
     <?php if ($voucher['type'] === 'transfer' && $voucher['transfer_checked_by']): ?><div><dt>Người kiểm hàng</dt><dd><?= e(userName((int)$voucher['transfer_checked_by'])) ?></dd></div><?php endif; ?>
-    <?php if ($voucher['type'] === 'transfer' && $voucher['transfer_received_by']): ?><div><dt>Người nhận hàng</dt><dd><?= e(userName((int)$voucher['transfer_received_by'])) ?><?= $voucher['transfer_received_at'] ? ' · ' . e($voucher['transfer_received_at']) : '' ?></dd></div><?php endif; ?>
+    <?php if ($voucher['type'] === 'transfer' && $voucher['transfer_received_by']): ?><div><dt>Người nhận hàng</dt><dd><?= e(userName((int)$voucher['transfer_received_by'])) ?><?= $voucher['transfer_received_at'] ? ' · ' . e(dateOnly($voucher['transfer_received_at'])) : '' ?></dd></div><?php endif; ?>
     <?php if ($ref): ?><div><dt>Chứng từ gốc</dt><dd><a href="/voucher.php?id=<?= $ref['id'] ?>"><?= e($ref['code']) ?></a></dd></div><?php endif; ?>
   </dl>
 </section>
@@ -267,18 +273,19 @@ require __DIR__ . '/../templates/header.php';
   <h2>Dòng hàng</h2>
   <div class="table-wrap">
   <table class="table">
-    <thead><tr><th>#</th><th>Mã</th><th>Mặt hàng</th><th>Lô</th><th>ĐVT</th><th class="num">Số lượng</th><?php if ($voucher['type'] === 'adjust'): ?><th>Lý do điều chỉnh</th><?php endif; ?><th class="num">Tồn hiện tại (kho đi)</th></tr></thead>
+    <thead><tr><th>#</th><?php if ($voucher['type']==='adjust'): ?><th>Kho</th><?php endif; ?><th>Mã</th><th>Mặt hàng</th><th>Lô</th><th>ĐVT</th><th class="num"><?= $voucher['type']==='adjust'?'Delta':'Số lượng' ?></th><?php if ($voucher['type']==='adjust'): ?><th>Lý do</th><?php endif; ?><th class="num">Tồn hiện tại</th></tr></thead>
     <tbody>
       <?php foreach ($lines as $n => $line): $item = $items[$line['item_id']]; ?>
         <tr>
           <td><?= $n + 1 ?></td>
+          <?php if ($voucher['type']==='adjust'): ?><td><?= e(warehouseName($line['warehouse_id'])) ?></td><?php endif; ?>
           <td><?= e($item['sku']) ?></td>
           <td><?= e($item['name']) ?></td>
           <td><?= e($batches[$line['batch_id']]['code']) ?></td>
           <td><?= e($item['unit_name']) ?></td>
           <td class="num"><?= $voucher['type'] === 'adjust' ? signedQty($line['qty']) : qty($line['qty']) ?></td>
-          <?php if ($voucher['type'] === 'adjust'): ?><td><?= e($line['reason'] ?: '—') ?></td><?php endif; ?>
-          <td class="num"><?= $canSeeSource ? qty(StockLedger::balanceOf($balances, $voucher['warehouse_id'], $line['batch_id'])) : '—' ?></td>
+          <?php if ($voucher['type']==='adjust'): ?><td><?= e($line['reason']) ?></td><?php endif; ?>
+          <td class="num"><?= ($voucher['type']==='adjust' ? canAccessWarehouse($user, $line['warehouse_id']) : $canSeeSource) ? qty(StockLedger::balanceOf($balances, $voucher['type']==='adjust'?$line['warehouse_id']:$voucher['warehouse_id'], $line['batch_id'])) : '—' ?></td>
         </tr>
       <?php endforeach; ?>
     </tbody>
@@ -390,8 +397,10 @@ require __DIR__ . '/../templates/header.php';
     </tbody>
   </table>
   </div>
-  <?php if ($voucher['status'] === 'confirmed' && $voucher['type'] !== 'transfer'): ?>
-    <p class="muted">Muốn sửa chứng từ đã ghi nhận: lập chứng từ điều chỉnh tham chiếu đến <?= e($voucher['code']) ?>; không xóa lịch sử.</p>
+  <?php if ($voucher['status'] === 'confirmed' && $user['role']==='staff'
+      && ($voucher['type'] !== 'transfer' || in_array($voucher['transfer_state']??'', ['partial','received'], true))): ?>
+    <p class="muted">Muốn sửa chứng từ đã ghi nhận, lập chứng từ điều chỉnh tham chiếu chứng từ này; lịch sử gốc được giữ nguyên.</p>
+    <a class="button button--ghost" href="/adjust-new.php?ref_id=<?= $voucher['id'] ?>">Lập chứng từ điều chỉnh</a>
   <?php endif; ?>
 </section>
 <?php require __DIR__ . '/../templates/footer.php'; ?>
