@@ -6,6 +6,8 @@ const ERROR_LABELS = [
     'TYPE_INVALID' => 'Loại chứng từ không hợp lệ.',
     'WAREHOUSE_INVALID' => 'Kho không tồn tại.',
     'WAREHOUSE_FORBIDDEN' => 'Bạn không phụ trách kho này.',
+    'ROLE_FORBIDDEN' => 'Chỉ nhân viên kho được lập phiếu nhập hoặc xuất.',
+    'REQUEST_KEY_INVALID' => 'Biểu mẫu đã hết hạn. Tải lại trang rồi thử lại.',
     'TO_WAREHOUSE_INVALID' => 'Kho đến không hợp lệ hoặc trùng kho đi.',
     'LINES_EMPTY' => 'Chứng từ cần ít nhất một dòng hàng.',
     'BATCH_INVALID' => 'Có dòng chọn lô hàng không tồn tại.',
@@ -27,6 +29,9 @@ function textFits(string $value, int $max): bool
 function validateVoucher(array $input, array $user, array $balances): array
 {
     $errors = [];
+    if ($user['role'] !== 'staff') {
+        $errors[] = 'ROLE_FORBIDDEN';
+    }
     $type = field($input, 'type');
     if (!in_array($type, ['in', 'out', 'transfer'], true)) {
         $errors[] = 'TYPE_INVALID';
@@ -56,6 +61,7 @@ function validateVoucher(array $input, array $user, array $balances): array
 
     // Mỗi dòng chọn một lô; mặt hàng suy ra từ lô nên không thể gửi cặp mặt hàng/lô lệch nhau.
     $batches = Store::indexed('batches');
+    $items = Store::indexed('items');
     $batchIds = listField($input, 'batch_id');
     $qtys = listField($input, 'qty');
     $lines = [];
@@ -69,7 +75,8 @@ function validateVoucher(array $input, array $user, array $balances): array
         $filled++;
         $batchId = (int)$rawBatch;
         $qty = filter_var($rawQty, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
-        if (!isset($batches[$batchId]) || !$batches[$batchId]['active']) {
+        if (!isset($batches[$batchId]) || !$batches[$batchId]['active']
+            || !isset($items[$batches[$batchId]['item_id']]) || !$items[$batches[$batchId]['item_id']]['active']) {
             $errors[] = 'BATCH_INVALID';
             continue;
         }

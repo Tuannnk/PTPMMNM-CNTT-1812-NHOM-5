@@ -14,6 +14,11 @@ function canManageCatalog(array $user): bool
     return $user['role'] === 'admin';
 }
 
+function canCreateVoucher(array $user): bool
+{
+    return $user['role'] === 'staff';
+}
+
 function requireCatalogManager(array $user): void
 {
     if (!canManageCatalog($user)) {

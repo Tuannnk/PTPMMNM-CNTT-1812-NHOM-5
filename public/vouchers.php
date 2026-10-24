@@ -24,11 +24,11 @@ require __DIR__ . '/../templates/header.php';
 ?>
 <header class="page-head">
   <div><h1>Chứng từ</h1><p>Nhập, xuất, điều chuyển và điều chỉnh. Chứng từ đã xác nhận không sửa, không xóa.</p></div>
-  <div class="actions">
+  <?php if (canCreateVoucher($user)): ?><div class="actions">
     <a class="button" href="/voucher-new.php?type=in">+ Phiếu nhập</a>
     <a class="button button--ghost" href="/voucher-new.php?type=out">Phiếu xuất</a>
     <a class="button button--ghost" href="/voucher-new.php?type=transfer">Điều chuyển</a>
-  </div>
+  </div><?php endif; ?>
 </header>
 
 <form class="filters" method="get">
@@ -63,7 +63,7 @@ require __DIR__ . '/../templates/header.php';
 <p class="result-count"><?= count($rows) ?> chứng từ</p>
 <div class="table-wrap">
 <table class="table">
-  <thead><tr><th>Mã</th><th>Loại</th><th>Kho</th><th>Ngày lập</th><th>Người lập</th><th class="num">Dòng</th><th>Trạng thái</th></tr></thead>
+  <thead><tr><th>Mã</th><th>Loại</th><th>Kho</th><th>Ngày lập</th><th>Người lập</th><th class="num">Dòng</th><th>Trạng thái</th><?php if ($user['role'] === 'approver'): ?><th>Thao tác</th><?php endif; ?></tr></thead>
   <tbody>
     <?php foreach ($rows as $v): ?>
       <tr>

@@ -31,6 +31,7 @@ const VOUCHER_TYPES = [
 const VOUCHER_STATUS = [
     'draft' => 'Chờ duyệt',
     'confirmed' => 'Đã xác nhận',
+    'rejected' => 'Không duyệt',
 ];
 
 const TRANSFER_STATE_LABELS = [
@@ -100,7 +101,11 @@ function userName(?int $id): string
 
 function statusBadge(string $status): string
 {
-    $class = $status === 'confirmed' ? 'badge badge--ok' : 'badge badge--wait';
+    $class = match ($status) {
+        'confirmed' => 'badge badge--ok',
+        'rejected' => 'badge badge--rejected',
+        default => 'badge badge--wait',
+    };
     return '<span class="' . $class . '">' . e(VOUCHER_STATUS[$status] ?? $status) . '</span>';
 }
 

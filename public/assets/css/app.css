@@ -106,6 +106,7 @@ code { font-size: .8em; color: var(--muted); }
 .badge { display: inline-flex; align-items: center; padding: .17rem .55rem; border-radius: 999px; font-size: .72rem; font-weight: 650; background: var(--surface-2); color: var(--muted); white-space: nowrap; vertical-align: middle; }
 .badge--ok, .badge--in { background: var(--ok-soft); color: var(--ok); }
 .badge--wait { background: var(--warn-soft); color: var(--warn); }
+.badge--rejected { background: var(--danger-soft); color: var(--danger); }
 .badge--out { background: var(--danger-soft); color: var(--danger); }
 .badge--transfer { background: var(--primary-soft); color: var(--primary); }
 .badge--adjust { background: var(--violet-soft); color: var(--violet); }
@@ -133,9 +134,14 @@ code { font-size: .8em; color: var(--muted); }
 .row-diff { background: var(--warn-soft); }
 
 /* Biểu mẫu và trạng thái */
-input, select { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: .48rem .62rem; min-height: 38px; }
+input, select, textarea { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: .48rem .62rem; }
+input, select { min-height: 38px; }
+textarea { display: block; width: min(100%, 320px); resize: vertical; }
+.reject-form { display: grid; gap: .4rem; }
+.reject-form .label { margin: 0; }
+.field-error { margin: 0; color: var(--danger); font-size: .82rem; }
 input::placeholder { color: #97a3b1; }
-input:focus, select:focus, button:focus-visible, a:focus-visible { outline: 3px solid color-mix(in srgb, var(--primary) 28%, transparent); outline-offset: 2px; border-color: var(--primary); }
+input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible { outline: 3px solid color-mix(in srgb, var(--primary) 28%, transparent); outline-offset: 2px; border-color: var(--primary); }
 .filters { display: flex; flex-wrap: wrap; gap: .72rem; align-items: flex-end; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: .8rem .9rem; margin-bottom: 1rem; box-shadow: var(--shadow); }
 .filters label { display: flex; flex-direction: column; gap: .25rem; font-size: .74rem; font-weight: 650; color: var(--muted); }
 .filters label.check { flex-direction: row; align-items: center; gap: .42rem; min-height: 38px; color: var(--text); font-weight: 500; font-size: .84rem; }

@@ -182,7 +182,7 @@ require __DIR__ . '/../templates/header.php';
 
 <?php if ($negative): ?>
   <div class="error-summary" role="alert">
-    <strong>Không thể xác nhận: số tồn sẽ âm</strong>
+    <strong>Không thể xác nhận: số tồn sẽ âm sau khi áp dụng phiếu</strong>
     <ul>
       <?php foreach ($negative as $key => $after): [$w, $b] = array_map('intval', explode(':', $key)); ?>
         <li><?= e(warehouseName($w)) ?> · lô <?= e($batches[$b]['code']) ?>: còn <?= qty($after) ?> sau khi xuất <code>STOCK_NEGATIVE</code></li>

@@ -1,6 +1,9 @@
 <?php
 require __DIR__ . '/../src/bootstrap.php';
 $user = requireLogin();
+if (!canCreateVoucher($user)) {
+    forbid('VOUCHER_CREATE_FORBIDDEN');
+}
 
 $type = field($_SERVER['REQUEST_METHOD'] === 'POST' ? $_POST : $_GET, 'type');
 if (!in_array($type, ['in', 'out', 'transfer'], true)) {
@@ -16,6 +19,15 @@ $activeWarehouses = array_values(array_filter(
 ));
 $balances = StockLedger::balances(Store::all('stock_movements'));
 $result = null;
+$requestKey = $_SERVER['REQUEST_METHOD'] === 'POST'
+    ? field($_POST, 'request_key')
+    : bin2hex(random_bytes(24));
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    $_SESSION['voucher_request_key'] = $requestKey;
+} elseif (!preg_match('/^[a-f0-9]{48}$/', $requestKey)) {
+    $requestKey = bin2hex(random_bytes(24));
+    $_SESSION['voucher_request_key'] = $requestKey;
+}
 $data = [
     'warehouse_id' => $allowed[0]['id'] ?? 0,
     'to_warehouse_id' => null,
@@ -30,6 +42,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     checkCsrf($_POST);
     // Kiểm tra quyền theo kho nằm trong validateVoucher: gửi thẳng warehouse_id của kho khác vẫn bị từ chối.
     $result = validateVoucher($_POST, $user, $balances);
+    if (!preg_match('/^[a-f0-9]{48}$/', field($_POST, 'request_key'))) {
+        $result['errors'][] = 'REQUEST_KEY_INVALID';
+    }
     $data = $result['data'];
     if (!$result['errors'] && $type === 'transfer') {
         try {
@@ -78,7 +93,7 @@ require __DIR__ . '/../templates/header.php';
   <?php endif; ?>
   <?php if (!$result['errors']): ?>
     <section class="preview" role="status">
-      <h2>Chứng từ hợp lệ</h2>
+      <h2><?= in_array($type, ['in', 'out'], true) ? 'Chứng từ hợp lệ' : 'Bản xem trước điều chuyển' ?></h2>
       <p>
         <?= e(VOUCHER_TYPES[$type]) ?> tại <?= e(warehouseName($data['warehouse_id'])) ?><?= $type === 'transfer' ? ' → ' . e(warehouseName($data['to_warehouse_id'])) : '' ?>,
         <?= count($data['lines']) ?> dòng, tổng <?= qty(array_sum(array_column($data['lines'], 'qty'))) ?> đơn vị.
@@ -91,6 +106,7 @@ require __DIR__ . '/../templates/header.php';
 
 <form method="post" class="card form">
   <?= csrfInput() ?>
+  <input type="hidden" name="request_key" value="<?= e($requestKey) ?>">
   <input type="hidden" name="type" value="<?= e($type) ?>">
   <?php if ($type === 'transfer'): ?><input type="hidden" name="request_key" value="<?= e($requestKey) ?>"><?php endif; ?>
   <div class="form-row">

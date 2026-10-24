@@ -214,6 +214,7 @@ public/        Trang Web: nhận request, gọi xử lý, hiển thị (không c
 src/
   bootstrap.php   Session, CSRF, hàm hiển thị dùng chung
   StockLedger.php Quy tắc tồn kho thuần: tính tồn từ sổ, phát sinh của chứng từ, phát hiện tồn âm
+  VoucherService.php Lưu phiếu nháp và xác nhận phiếu nhập/xuất trong giao dịch
   Validation.php  Kiểm tra form phía máy chủ, trả ['errors' => [...], 'data' => [...]]
   Auth.php        Người dùng hiện tại, quyền theo kho, quyền xác nhận
   TransferService.php Kiểm hàng, duyệt xuất, nhận hàng và ghi sổ điều chuyển
