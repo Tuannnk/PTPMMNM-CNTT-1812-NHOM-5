@@ -79,15 +79,34 @@ CREATE TABLE IF NOT EXISTS vouchers (
     to_warehouse_id bigint REFERENCES warehouses(id),
     created_by      bigint NOT NULL REFERENCES users(id),
     confirmed_by    bigint REFERENCES users(id),
+    rejected_by     bigint REFERENCES users(id),
     created_at      timestamptz NOT NULL DEFAULT now(),
     confirmed_at    timestamptz,
+    rejected_at     timestamptz,
+    reject_reason   text NOT NULL DEFAULT '',
     note            text NOT NULL DEFAULT '',
     ref_id          bigint REFERENCES vouchers(id),
+    idempotency_key varchar(64),
     CHECK ((type = 'transfer' AND to_warehouse_id IS NOT NULL AND to_warehouse_id <> warehouse_id)
         OR (type <> 'transfer' AND to_warehouse_id IS NULL)),
     CHECK ((status = 'confirmed' AND confirmed_by IS NOT NULL AND confirmed_at IS NOT NULL)
         OR status <> 'confirmed')
 );
+
+ALTER TABLE vouchers ADD COLUMN IF NOT EXISTS idempotency_key varchar(64);
+ALTER TABLE vouchers ADD COLUMN IF NOT EXISTS rejected_by bigint REFERENCES users(id);
+ALTER TABLE vouchers ADD COLUMN IF NOT EXISTS rejected_at timestamptz;
+ALTER TABLE vouchers ADD COLUMN IF NOT EXISTS reject_reason text NOT NULL DEFAULT '';
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'vouchers_rejection_metadata_check') THEN
+        ALTER TABLE vouchers ADD CONSTRAINT vouchers_rejection_metadata_check
+            CHECK ((status = 'rejected' AND rejected_by IS NOT NULL AND rejected_at IS NOT NULL AND btrim(reject_reason) <> '')
+                OR (status <> 'rejected' AND rejected_by IS NULL AND rejected_at IS NULL AND reject_reason = ''));
+    END IF;
+END $$;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_vouchers_idempotency_key
+    ON vouchers (idempotency_key) WHERE idempotency_key IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS voucher_lines (
     id         bigserial PRIMARY KEY,

@@ -4,7 +4,7 @@ Bài tập lớn học phần **Phát triển phần mềm mã nguồn mở**, n
 
 Phần mềm mã nguồn mở giúp một đơn vị có nhiều kho theo dõi số lượng hàng, ghi nhận chứng từ nhập, xuất và điều chuyển, và tìm nguyên nhân chênh lệch khi kiểm kê. Số tồn **không nhập tay**: hệ thống luôn tính lại từ sổ phát sinh của các chứng từ đã xác nhận, nên có thể đối chiếu bất cứ lúc nào.
 
-> **Trạng thái hiện tại:** lớp `Store` đã đọc PostgreSQL cho các trang. Các thao tác ghi (lập phiếu, xác nhận, kiểm kê) vẫn mới kiểm tra dữ liệu và hiển thị bản xem trước, chưa lưu vào CSDL. Cần nạp dữ liệu mẫu trước khi đăng nhập.
+> **Trạng thái hiện tại:** kho, mặt hàng, đơn vị tính, lô và quyền đã đọc/ghi PostgreSQL. Phiếu nhập/xuất được lưu nháp và ghi sổ khi người duyệt xác nhận trong giao dịch. Điều chuyển và kiểm kê vẫn đang ở mức giao diện/bản xem trước.
 
 ## Thành viên
 
@@ -18,7 +18,7 @@ Phần mềm mã nguồn mở giúp một đơn vị có nhiều kho theo dõi s
 | Vai trò                 | Quyền                                                                            |
 | ----------------------- | -------------------------------------------------------------------------------- |
 | Nhân viên kho           | Lập phiếu nhập, xuất, điều chuyển tại kho mình phụ trách; tra cứu tồn và lịch sử |
-| Người duyệt chứng từ    | Xác nhận chứng từ chờ duyệt; khi xác nhận, sổ phát sinh mới được ghi             |
+| Người duyệt chứng từ    | Duyệt hoặc không duyệt chứng từ chờ xử lý; từ chối phải ghi lý do                |
 | Người phụ trách kiểm kê | Tạo đợt kiểm kê, nhập số thực tế, xác nhận chênh lệch kèm lý do                  |
 
 Mỗi tài khoản chỉ thao tác trên **các kho được phân quyền**. Quyền được kiểm tra phía máy chủ ở từng yêu cầu, không chỉ ẩn nút trên giao diện.
@@ -28,7 +28,7 @@ Mỗi tài khoản chỉ thao tác trên **các kho được phân quyền**. Qu
 | #   | Chức năng                                                                                      | Trang                                            | Trạng thái            |
 | --- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------ | --------------------- |
 | 1   | Quản lý kho, mặt hàng, đơn vị tính, lô hàng và quyền theo kho                                  | `/warehouses.php`, `/items.php`, `/access.php`   | Đã ghi PostgreSQL; quản trị viên quản lý danh mục |
-| 2   | Lập, kiểm tra, xác nhận phiếu nhập/xuất; tra cứu tồn từ dòng phát sinh                         | `/voucher-new.php`, `/voucher.php`, `/stock.php` | Giao diện ✔ · CSDL ⏳ |
+| 2   | Lập, kiểm tra, xác nhận hoặc từ chối phiếu nhập/xuất; tra cứu tồn từ dòng phát sinh            | `/voucher-new.php`, `/voucher.php`, `/stock.php` | Đã ghi PostgreSQL; duyệt có khóa tồn; từ chối lưu lý do và không ghi phát sinh |
 | 3   | Điều chuyển giữa hai kho, có chứng từ ở cả nơi đi và nơi đến                                   | `/voucher-new.php?type=transfer`                 | Giao diện ✔ · CSDL ⏳ |
 | 4   | Tạo đợt kiểm kê, nhập số thực tế, tính chênh lệch, lập chứng từ điều chỉnh có lý do            | `/counts.php`, `/count.php`                      | Giao diện ✔ · CSDL ⏳ |
 | 5   | Lịch sử hàng, đối chiếu tồn, xuất báo cáo CSV; sửa bằng chứng từ điều chỉnh, không xóa lịch sử | `/history.php`, `/export.php`                    | Giao diện ✔ · CSDL ⏳ |
@@ -60,11 +60,12 @@ flowchart TD
     B --> C{Máy chủ kiểm tra quyền kho và dữ liệu}
     C -->|Không hợp lệ| D[Hiển thị lỗi để sửa]
     D --> A
-    C -->|Hợp lệ| E[Hiển thị bản xem trước phiếu chờ duyệt]
+    C -->|Hợp lệ| E[Lưu phiếu nháp và các dòng hàng]
     E --> F[Người duyệt mở chứng từ]
-    F --> G{Có quyền xác nhận và tồn không âm?}
-    G -->|Không| H[Từ chối xác nhận]
-    G -->|Có| I[Xác nhận chứng từ]
+    F --> G{Quyết định của người duyệt}
+    G -->|Không duyệt, ghi lý do| H[Lưu trạng thái bị từ chối]
+    G -->|Duyệt, tồn hợp lệ| I[Xác nhận chứng từ]
+    G -->|Duyệt, tồn không đủ| F
     I --> J{Loại chứng từ}
     J -->|Nhập, xuất hoặc điều chỉnh| K[Ghi dòng phát sinh tương ứng]
     J -->|Điều chuyển| L[Ghi giảm ở kho đi và tăng ở kho đến]
@@ -90,14 +91,14 @@ flowchart TD
     I --> J
 ```
 
-> **Lưu ý:** Các biểu đồ mô tả luồng nghiệp vụ. Hiện lớp `Store` đã đọc dữ liệu PostgreSQL, nhưng lập phiếu, xác nhận và chốt kiểm kê mới kiểm tra dữ liệu rồi hiển thị bản xem trước; các thao tác này chưa ghi vào CSDL.
+> **Lưu ý:** Luồng phiếu nhập/xuất đã ghi PostgreSQL. Điều chuyển và chốt kiểm kê vẫn mới hiển thị bản xem trước, chưa ghi vào CSDL.
 
 ### Hai yêu cầu kỹ thuật
 
 1. **Sổ phát sinh và giao dịch cập nhật tồn.** Khi nhiều yêu cầu cùng xuất, số tồn không được âm. Gửi lại một chứng từ không được ghi nhận thêm lần nữa.
 2. **Điều chuyển trong cùng một giao dịch.** Trừ kho đi và cộng kho đến phải cùng thành công hoặc cùng thất bại; số tồn luôn khớp sổ phát sinh.
 
-Hiện tại `src/StockLedger.php` có phần quy tắc tính tồn từ sổ, sinh hai dòng phát sinh cho điều chuyển và phát hiện tồn âm. Khóa dòng và giao dịch CSDL chưa được triển khai.
+`src/StockLedger.php` tính tồn từ sổ và tạo phát sinh dự kiến. `src/VoucherService.php` lưu phiếu nháp, xác nhận nhập/xuất trong giao dịch, khóa kho/lô để ngăn xuất đồng thời làm tồn âm, từ chối phiếu cùng lý do/người/thời điểm xử lý và bảo đảm gửi lại yêu cầu không ghi trùng. Phiếu bị từ chối không tạo phát sinh tồn kho. Giao dịch điều chuyển hai kho chưa được triển khai.
 
 ## Cài đặt và chạy
 
@@ -155,7 +156,7 @@ Sau khi chạy các lệnh trên, database và schema sẽ sẵn sàng. Từ th�
 php tools/db-config.php
 ```
 
-Nhập cùng host, database, user và mật khẩu vừa tạo. Công cụ thử kết nối trước khi lưu `.local/db.json` với quyền riêng tư; tệp này đã được loại khỏi Git. Sau đó `bash app.sh run` sẽ đọc các bảng PostgreSQL. Bảng đang rỗng cho đến khi nạp dữ liệu mẫu. Các form ghi chứng từ và kiểm kê hiện vẫn chỉ hiển thị bản xem trước, chưa ghi vào database.
+Nhập cùng host, database, user và mật khẩu vừa tạo. Công cụ thử kết nối trước khi lưu `.local/db.json` với quyền riêng tư; tệp này đã được loại khỏi Git. Sau đó `bash app.sh run` sẽ đọc các bảng PostgreSQL. Bảng đang rỗng cho đến khi nạp dữ liệu mẫu. Phiếu nhập/xuất được lưu nháp và xác nhận vào sổ; điều chuyển và kiểm kê vẫn đang ở bản xem trước.
 
 Để nạp dữ liệu mẫu (chạy từ thư mục gốc của dự án):
 
@@ -195,9 +196,9 @@ bash app.sh lint    # kiểm tra cú pháp mọi tệp PHP
 
 | Phép thử bắt buộc                                                 | Hiện tại                                                                    |
 | ----------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| Kho còn 5, hai yêu cầu cùng xuất 4: chỉ một phiếu được ghi nhận   | Đã kiểm tra tuần tự (`tests/run.php`); bản đồng thời thật cần CSDL ⏳       |
+| Kho còn 5, hai yêu cầu cùng xuất 4: chỉ một phiếu được ghi nhận   | Có khóa kho/lô và kiểm tra lại trong giao dịch; kiểm thử đồng thời thật cần bổ sung ⏳ |
 | Lỗi giữa lúc trừ kho A và cộng kho B: không có thay đổi dở dang   | Đã kiểm tra tổng phát sinh điều chuyển = 0; kiểm tra rollback cần CSDL ⏳   |
-| Gửi lại chứng từ đã xác nhận: tồn và sổ không tăng                | Cần khóa idempotency trong CSDL ⏳                                          |
+| Gửi lại yêu cầu lập hoặc xác nhận phiếu đã xử lý: không ghi trùng  | Có khóa idempotency khi lập; xác nhận khóa phiếu và chỉ chuyển trạng thái từ nháp một lần |
 | Tài khoản kho A không lập phiếu xuất kho B bằng yêu cầu trực tiếp | ✔ `WAREHOUSE_FORBIDDEN`, kiểm tra ở `validateVoucher` và mọi trang chi tiết |
 | Điều chỉnh kiểm kê có lý do; tồn sau điều chỉnh khớp lịch sử      | ✔ bắt buộc lý do (`REASON_REQUIRED`); điều chỉnh khớp tổng chênh lệch       |
 
@@ -211,6 +212,7 @@ public/        Trang Web: nhận request, gọi xử lý, hiển thị (không c
 src/
   bootstrap.php   Session, CSRF, hàm hiển thị dùng chung
   StockLedger.php Quy tắc tồn kho thuần: tính tồn từ sổ, phát sinh của chứng từ, phát hiện tồn âm
+  VoucherService.php Lưu phiếu nháp và xác nhận phiếu nhập/xuất trong giao dịch
   Validation.php  Kiểm tra form phía máy chủ, trả ['errors' => [...], 'data' => [...]]
   Auth.php        Người dùng hiện tại, quyền theo kho, quyền xác nhận
   Store.php       Đọc dữ liệu PostgreSQL theo cấu trúc dùng trong giao diện
@@ -237,7 +239,7 @@ Bảng dự kiến khi chuyển sang CSDL: `warehouses`, `items`, `batches`, `us
 - [x] Schema PostgreSQL và lớp đọc dữ liệu qua PDO
 - [x] Quản lý danh mục kho, mặt hàng, đơn vị tính, lô hàng và phân quyền tài khoản theo kho
 - [ ] Nạp dữ liệu mẫu vào PostgreSQL
-- [ ] Xác nhận chứng từ trong giao dịch: khóa dòng tồn (`SELECT … FOR UPDATE`), ràng buộc `CHECK`, khóa idempotency cho chứng từ
+- [x] Lập và xác nhận phiếu nhập/xuất trong giao dịch, khóa tồn theo kho/lô, khóa idempotency
 - [ ] Điều chuyển trong một giao dịch; kiểm thử rollback khi gây lỗi giữa hai thao tác
 - [ ] Kiểm thử tích hợp cho 5 phép thử bắt buộc, kể cả hai yêu cầu xuất đồng thời
 - [x] Đăng nhập bằng mật khẩu (`password_hash`)

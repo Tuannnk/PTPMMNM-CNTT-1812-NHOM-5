@@ -6,9 +6,6 @@ $nav = [
     'Tổng quan' => [['dashboard', '/', 'Bảng điều khiển']],
     'Chứng từ' => [
         ['vouchers', '/vouchers.php', 'Danh sách chứng từ'],
-        ['voucher-in', '/voucher-new.php?type=in', 'Lập phiếu nhập'],
-        ['voucher-out', '/voucher-new.php?type=out', 'Lập phiếu xuất'],
-        ['transfer', '/voucher-new.php?type=transfer', 'Điều chuyển kho'],
     ],
     'Tồn kho' => [
         ['stock', '/stock.php', 'Tra cứu tồn'],
@@ -20,6 +17,13 @@ $nav = [
         ['items', '/items.php', 'Mặt hàng & lô'],
     ],
 ];
+if ($user && canCreateVoucher($user)) {
+    array_splice($nav['Chứng từ'], 1, 0, [
+        ['voucher-in', '/voucher-new.php?type=in', 'Lập phiếu nhập'],
+        ['voucher-out', '/voucher-new.php?type=out', 'Lập phiếu xuất'],
+        ['transfer', '/voucher-new.php?type=transfer', 'Điều chuyển kho'],
+    ]);
+}
 if ($user && canManageCatalog($user)) {
     $nav['Danh mục'][] = ['access', '/access.php', 'Tài khoản & phân quyền'];
 }

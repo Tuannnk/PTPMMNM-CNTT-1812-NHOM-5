@@ -22,10 +22,10 @@ require __DIR__ . '/../templates/header.php';
     <h1>Bảng điều khiển</h1>
     <p>Phạm vi: <?= e(implode(', ', array_column(allowedWarehouses($user), 'name'))) ?></p>
   </div>
-  <div class="actions">
+  <?php if (canCreateVoucher($user)): ?><div class="actions">
     <a class="button" href="/voucher-new.php?type=in">+ Phiếu nhập</a>
     <a class="button button--ghost" href="/voucher-new.php?type=out">Phiếu xuất</a>
-  </div>
+  </div><?php endif; ?>
 </header>
 
 <section class="stats" aria-label="Chỉ số nhanh">

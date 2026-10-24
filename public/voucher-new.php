@@ -1,6 +1,9 @@
 <?php
 require __DIR__ . '/../src/bootstrap.php';
 $user = requireLogin();
+if (!canCreateVoucher($user)) {
+    forbid('VOUCHER_CREATE_FORBIDDEN');
+}
 
 $type = field($_SERVER['REQUEST_METHOD'] === 'POST' ? $_POST : $_GET, 'type');
 if (!in_array($type, ['in', 'out', 'transfer'], true)) {
@@ -9,6 +12,15 @@ if (!in_array($type, ['in', 'out', 'transfer'], true)) {
 $allowed = allowedWarehouses($user);
 $balances = StockLedger::balances(Store::all('stock_movements'));
 $result = null;
+$requestKey = $_SERVER['REQUEST_METHOD'] === 'POST'
+    ? field($_POST, 'request_key')
+    : bin2hex(random_bytes(24));
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    $_SESSION['voucher_request_key'] = $requestKey;
+} elseif (!preg_match('/^[a-f0-9]{48}$/', $requestKey)) {
+    $requestKey = bin2hex(random_bytes(24));
+    $_SESSION['voucher_request_key'] = $requestKey;
+}
 $data = [
     'warehouse_id' => $allowed[0]['id'] ?? 0,
     'to_warehouse_id' => null,
@@ -20,7 +32,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     checkCsrf($_POST);
     // Kiểm tra quyền theo kho nằm trong validateVoucher: gửi thẳng warehouse_id của kho khác vẫn bị từ chối.
     $result = validateVoucher($_POST, $user, $balances);
+    if (!preg_match('/^[a-f0-9]{48}$/', field($_POST, 'request_key'))) {
+        $result['errors'][] = 'REQUEST_KEY_INVALID';
+    }
     $data = $result['data'];
+    if (!$result['errors'] && in_array($type, ['in', 'out'], true)) {
+        $voucherId = VoucherService::createDraft($user, $data, $requestKey);
+        unset($_SESSION['voucher_request_key']);
+        flash('Đã lưu chứng từ nháp. Số tồn chỉ thay đổi sau khi người duyệt xác nhận.');
+        redirect('/voucher.php?id=' . $voucherId);
+    }
 }
 
 $items = array_filter(Store::indexed('items'), fn($item) => $item['active']);
@@ -54,19 +75,20 @@ require __DIR__ . '/../templates/header.php';
   <?php endif; ?>
   <?php if (!$result['errors']): ?>
     <section class="preview" role="status">
-      <h2>Chứng từ hợp lệ</h2>
+      <h2><?= in_array($type, ['in', 'out'], true) ? 'Chứng từ hợp lệ' : 'Bản xem trước điều chuyển' ?></h2>
       <p>
         <?= e(VOUCHER_TYPES[$type]) ?> tại <?= e(warehouseName($data['warehouse_id'])) ?><?= $type === 'transfer' ? ' → ' . e(warehouseName($data['to_warehouse_id'])) : '' ?>,
         <?= count($data['lines']) ?> dòng, tổng <?= qty(array_sum(array_column($data['lines'], 'qty'))) ?> đơn vị.
-        Sẽ lưu ở trạng thái <strong>Chờ duyệt</strong>.
+        <?php if (in_array($type, ['in', 'out'], true)): ?>Sẽ lưu ở trạng thái <strong>Chờ duyệt</strong>.<?php else: ?>Điều chuyển hiện vẫn là bản xem trước, chưa ghi vào cơ sở dữ liệu.<?php endif; ?>
       </p>
-      <p class="muted">Giao diện mẫu: chưa ghi CSDL. Giai đoạn sau, form gửi kèm khóa yêu cầu để gửi lại không tạo chứng từ thứ hai.</p>
+      <?php if (in_array($type, ['in', 'out'], true)): ?><p class="muted">Gửi lại biểu mẫu không tạo bản nháp trùng.</p><?php endif; ?>
     </section>
   <?php endif; ?>
 <?php endif; ?>
 
 <form method="post" class="card form">
   <?= csrfInput() ?>
+  <input type="hidden" name="request_key" value="<?= e($requestKey) ?>">
   <input type="hidden" name="type" value="<?= e($type) ?>">
   <div class="form-row">
     <label class="form-field"><?= $type === 'transfer' ? 'Kho đi' : 'Kho' ?>
