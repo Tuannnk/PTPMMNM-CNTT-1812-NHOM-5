@@ -25,6 +25,8 @@ $planned = array_values(array_filter(
 ));
 $negative = [];
 $confirmError = '';
+$rejectError = '';
+$rejectReasonInput = '';
 $workflowError = '';
 $canCheckTransfer = $voucher['type'] === 'transfer'
     && ($voucher['transfer_state'] ?? 'draft') === 'draft'
@@ -133,13 +135,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $workflowError = 'Không thể lưu thao tác điều chuyển. Giao dịch đã được hủy nếu có lỗi khi ghi dữ liệu.';
         }
     } else {
-        if (!canConfirm($user, $voucher)) {
-            forbid('CONFIRM_FORBIDDEN');
-        }
-        $negative = StockLedger::negativeAfter($balances, $planned);
-        if (!$negative) {
-            flash(sprintf('%s hợp lệ: khi xác nhận sẽ ghi %d dòng phát sinh (giao diện mẫu, chưa lưu CSDL).', $voucher['code'], count($planned)));
+        $decision = field($_POST, 'decision') ?: 'confirm';
+        if (in_array($voucher['status'], ['confirmed', 'rejected'], true)
+            && $user['role'] === 'approver' && $canSeeSource) {
+            flash($voucher['status'] === 'confirmed'
+                ? 'Phiếu đã được xác nhận trước đó.'
+                : 'Phiếu đã bị từ chối trước đó.');
             redirect('/voucher.php?id=' . $voucher['id']);
+        }
+        if (!canConfirm($user, $voucher)) {
+            forbid($decision === 'reject' ? 'REJECT_FORBIDDEN' : 'CONFIRM_FORBIDDEN');
+        }
+        if ($decision === 'reject') {
+            $rejectReasonInput = field($_POST, 'reject_reason');
+            if ($rejectReasonInput === '' || !textFits($rejectReasonInput, 255)) {
+                $rejectError = $rejectReasonInput === ''
+                    ? 'Vui lòng nhập lý do không duyệt.'
+                    : 'Lý do không được dài quá 255 ký tự.';
+            } else {
+                try {
+                    $outcome = VoucherService::reject($voucher['id'], $user, $rejectReasonInput);
+                    flash($outcome['already_rejected']
+                        ? 'Phiếu đã bị từ chối trước đó.'
+                        : 'Đã từ chối phiếu. Không có phát sinh tồn kho nào được ghi.');
+                    redirect('/voucher.php?id=' . $voucher['id']);
+                } catch (Throwable $e) {
+                    if ($e->getMessage() === 'REJECT_FORBIDDEN') forbid('REJECT_FORBIDDEN');
+                    error_log(sprintf('Voucher rejection failed for id=%d: %s', $voucher['id'], $e->getMessage()));
+                    $rejectError = 'Không lưu được quyết định từ chối. Vui lòng thử lại.';
+                }
+            }
+        } elseif ($decision === 'confirm') {
+            try {
+                $outcome = VoucherService::confirm($voucher['id'], $user);
+                $negative = $outcome['negative'];
+                if (!$negative) {
+                    flash(!empty($outcome['already_confirmed'])
+                        ? 'Phiếu đã được xác nhận trước đó; không ghi phát sinh trùng.'
+                        : 'Đã phê duyệt phiếu và ghi phát sinh vào sổ kho.');
+                    redirect('/voucher.php?id=' . $voucher['id']);
+                }
+            } catch (Throwable $e) {
+                if ($e->getMessage() === 'CONFIRM_FORBIDDEN') forbid('CONFIRM_FORBIDDEN');
+                error_log(sprintf('Voucher confirmation failed for id=%d: %s', $voucher['id'], $e->getMessage()));
+                $confirmError = 'Không phê duyệt được phiếu do lỗi khi ghi sổ. Vui lòng thử lại.';
+            }
+        } else {
+            http_response_code(400);
+            exit('INVALID_VOUCHER_DECISION');
         }
     }
 }
@@ -152,7 +195,7 @@ $movementRows = $movements;
 if (!$movementRows && $voucher['type'] === 'transfer'
     && in_array($voucher['transfer_state'] ?? '', ['draft', 'checked'], true)) {
     $movementRows = $planned;
-} elseif (!$movementRows && $voucher['type'] !== 'transfer' && $voucher['status'] !== 'confirmed') {
+} elseif (!$movementRows && $voucher['type'] !== 'transfer' && $voucher['status'] === 'draft') {
     $movementRows = $planned;
 }
 $ref = $voucher['ref_id'] ? Store::find('vouchers', $voucher['ref_id']) : null;
@@ -173,10 +216,19 @@ require __DIR__ . '/../templates/header.php';
       <button class="button">Duyệt xuất kho</button>
     </form>
   <?php elseif ($voucher['type'] !== 'transfer' && canConfirm($user, $voucher)): ?>
-    <form method="post" class="actions">
-      <?= csrfInput() ?>
-      <button class="button">Xác nhận chứng từ</button>
-    </form>
+    <div class="actions">
+      <form method="post">
+        <?= csrfInput() ?><input type="hidden" name="decision" value="confirm">
+        <button class="button">Phê duyệt và ghi sổ</button>
+      </form>
+      <form method="post" class="reject-form">
+        <?= csrfInput() ?><input type="hidden" name="decision" value="reject">
+        <label class="label" for="reject_reason">Lý do không duyệt (bắt buộc)</label>
+        <textarea id="reject_reason" name="reject_reason" rows="2" maxlength="255" required><?= e($rejectReasonInput) ?></textarea>
+        <?php if ($rejectError !== ''): ?><p class="field-error" role="alert"><?= e($rejectError) ?></p><?php endif; ?>
+        <button class="button button--ghost">Không duyệt phiếu</button>
+      </form>
+    </div>
   <?php endif; ?>
 </header>
 
@@ -190,6 +242,7 @@ require __DIR__ . '/../templates/header.php';
     </ul>
   </div>
 <?php endif; ?>
+<?php if ($confirmError !== ''): ?><div class="error-summary" role="alert"><?= e($confirmError) ?></div><?php endif; ?>
 <?php if ($workflowError !== ''): ?><div class="error-summary" role="alert"><?= e($workflowError) ?></div><?php endif; ?>
 
 <section class="card">
@@ -200,6 +253,10 @@ require __DIR__ . '/../templates/header.php';
     <?php endif; ?>
     <div><dt>Người lập</dt><dd><?= e(userName($voucher['created_by'])) ?> · <?= e($voucher['created_at']) ?></dd></div>
     <div><dt>Người xác nhận</dt><dd><?= e(userName($voucher['confirmed_by'])) ?><?= $voucher['confirmed_at'] ? ' · ' . e($voucher['confirmed_at']) : '' ?></dd></div>
+    <?php if ($voucher['status'] === 'rejected'): ?>
+      <div><dt>Người không duyệt</dt><dd><?= e(userName($voucher['rejected_by'])) ?><?= $voucher['rejected_at'] ? ' · ' . e($voucher['rejected_at']) : '' ?></dd></div>
+      <div><dt>Lý do không duyệt</dt><dd><?= e($voucher['reject_reason']) ?></dd></div>
+    <?php endif; ?>
     <?php if ($voucher['type'] === 'transfer' && $voucher['transfer_checked_by']): ?><div><dt>Người kiểm hàng</dt><dd><?= e(userName((int)$voucher['transfer_checked_by'])) ?></dd></div><?php endif; ?>
     <?php if ($voucher['type'] === 'transfer' && $voucher['transfer_received_by']): ?><div><dt>Người nhận hàng</dt><dd><?= e(userName((int)$voucher['transfer_received_by'])) ?><?= $voucher['transfer_received_at'] ? ' · ' . e($voucher['transfer_received_at']) : '' ?></dd></div><?php endif; ?>
     <?php if ($ref): ?><div><dt>Chứng từ gốc</dt><dd><a href="/voucher.php?id=<?= $ref['id'] ?>"><?= e($ref['code']) ?></a></dd></div><?php endif; ?>
@@ -307,11 +364,15 @@ require __DIR__ . '/../templates/header.php';
 <?php endif; ?>
 
 <section class="card">
-  <h2><?= ($voucher['transfer_state'] ?? '') === 'cancelled' ? 'Phiếu đã hủy — không ghi phát sinh' : ($movements ? 'Phát sinh đã ghi sổ' : 'Phát sinh dự kiến') ?></h2>
+  <h2><?= $voucher['status'] === 'rejected' || ($voucher['transfer_state'] ?? '') === 'cancelled'
+      ? 'Phiếu đã từ chối/hủy — không ghi phát sinh'
+      : ($movements ? 'Phát sinh đã ghi sổ' : 'Phát sinh dự kiến') ?></h2>
   <p class="muted">
-    <?= $voucher['type'] === 'transfer'
+    <?= $voucher['status'] === 'rejected'
+        ? 'Phiếu bị từ chối nên không tạo dòng phát sinh trong sổ kho.'
+        : ($voucher['type'] === 'transfer'
         ? 'Kho đi giảm khi người duyệt duyệt xuất; kho đến chỉ tăng theo số thực nhận đã được xác nhận.'
-        : 'Mỗi dòng hàng sinh một dòng phát sinh. Số tồn được tính lại từ các dòng này.' ?>
+        : 'Mỗi dòng hàng sinh một dòng phát sinh. Số tồn được tính lại từ các dòng này.') ?>
   </p>
   <div class="table-wrap">
   <table class="table table--compact">

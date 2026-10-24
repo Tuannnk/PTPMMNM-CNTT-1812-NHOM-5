@@ -21,7 +21,7 @@ $balances = StockLedger::balances(Store::all('stock_movements'));
 $result = null;
 $requestKey = $_SERVER['REQUEST_METHOD'] === 'POST'
     ? field($_POST, 'request_key')
-    : bin2hex(random_bytes(24));
+    : bin2hex(random_bytes(32));
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     $_SESSION['voucher_request_key'] = $requestKey;
 }
@@ -35,7 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     checkCsrf($_POST);
     // Kiểm tra quyền theo kho nằm trong validateVoucher: gửi thẳng warehouse_id của kho khác vẫn bị từ chối.
     $result = validateVoucher($_POST, $user, $balances);
-    if (!preg_match('/^[a-f0-9]{48}$/', field($_POST, 'request_key'))) {
+    if (!preg_match('/^[a-f0-9]{64}$/', field($_POST, 'request_key'))) {
         $result['errors'][] = 'REQUEST_KEY_INVALID';
     }
     $data = $result['data'];
@@ -51,6 +51,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect('/voucher.php?id=' . $saved['id']);
         } catch (Throwable $e) {
             $result['errors'][] = 'TRANSFER_SAVE_FAILED';
+        }
+    } elseif (!$result['errors']) {
+        try {
+            $voucherId = VoucherService::createDraft($user, $data, $requestKey);
+            flash(sprintf('Đã lưu phiếu %s ở trạng thái chờ duyệt.', $type === 'in' ? 'nhập' : 'xuất'));
+            redirect('/voucher.php?id=' . $voucherId);
+        } catch (Throwable $e) {
+            error_log(sprintf('Voucher draft save failed for user=%d: %s', $user['id'], $e->getMessage()));
+            $result['errors'][] = 'VOUCHER_SAVE_FAILED';
         }
     }
 }
@@ -92,7 +101,6 @@ require __DIR__ . '/../templates/header.php';
         <?= count($data['lines']) ?> dòng, tổng <?= qty(array_sum(array_column($data['lines'], 'qty'))) ?> đơn vị.
         Sẽ lưu ở trạng thái <strong><?= $type === 'transfer' ? 'Chờ kiểm hàng' : 'Chờ duyệt' ?></strong>.
       </p>
-      <?php if ($type !== 'transfer'): ?><p class="muted">Phiếu nhập và xuất hiện vẫn là bản xem trước, chưa ghi CSDL.</p><?php endif; ?>
     </section>
   <?php endif; ?>
 <?php endif; ?>

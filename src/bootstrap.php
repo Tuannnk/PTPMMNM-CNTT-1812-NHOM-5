@@ -19,6 +19,7 @@ require __DIR__ . '/Store.php';
 require __DIR__ . '/StockLedger.php';
 require __DIR__ . '/Auth.php';
 require __DIR__ . '/Validation.php';
+require __DIR__ . '/VoucherService.php';
 require __DIR__ . '/TransferService.php';
 
 const VOUCHER_TYPES = [

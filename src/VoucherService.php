@@ -13,7 +13,7 @@ final class VoucherService
             $prefix = ['in' => 'PN', 'out' => 'PX', 'transfer' => 'PC'][$data['type']];
             $code = sprintf('%s-%06d', $prefix, $id);
             $insert = $db->prepare(
-                'INSERT INTO vouchers (id,code,type,status,warehouse_id,to_warehouse_id,created_by,note,idempotency_key) '
+            'INSERT INTO vouchers (id,code,type,status,warehouse_id,to_warehouse_id,created_by,note,request_key) '
                 . 'VALUES (:id,:code,:type,\'draft\',:warehouse,:to_warehouse,:user,:note,:request_key) '
                 . 'ON CONFLICT DO NOTHING RETURNING id'
             );
@@ -30,7 +30,7 @@ final class VoucherService
             $createdId = $insert->fetchColumn();
             if ($createdId === false) {
                 $db->rollBack();
-                $find = $db->prepare('SELECT id FROM vouchers WHERE idempotency_key=:key');
+                $find = $db->prepare('SELECT id FROM vouchers WHERE request_key=:key');
                 $find->execute(['key' => $requestKey]);
                 $existingId = $find->fetchColumn();
                 if ($existingId !== false) {
