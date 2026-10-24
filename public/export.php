@@ -19,6 +19,6 @@ foreach (Store::all('items') as $item) {
     if (($q !== '' && stripos($item['sku'] . ' ' . $item['name'], $q) === false) || ($lowOnly && $total >= $item['min_stock'])) {
         continue;
     }
-    fputcsv($out, array_merge([$item['sku'], $item['name'], $item['unit']], $cells, [$total, $item['min_stock']]), ',', '"', '');
+    fputcsv($out, array_merge([$item['sku'], $item['name'], $item['unit_name']], $cells, [$total, $item['min_stock']]), ',', '"', '');
 }
 fclose($out);

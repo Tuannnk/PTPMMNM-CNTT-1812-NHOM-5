@@ -32,6 +32,14 @@ INSERT INTO users (id, username, full_name, role, password_hash, active) VALUES
 INSERT INTO user_warehouses (user_id, warehouse_id) VALUES
 (1, 1), (2, 2), (3, 1), (3, 2), (3, 3), (4, 1), (4, 3);
 
+INSERT INTO users (id, username, full_name, role, password_hash, active) VALUES
+(5, 'quantri', 'Quản trị hệ thống', 'admin', '$2y$10$Ufh8AvQvyQM8JlEITZfzse0n8.zGDBspeet.SyCxN2L9A0TpMnwjO', true);
+INSERT INTO user_warehouses (user_id, warehouse_id) VALUES (5, 1), (5, 2), (5, 3);
+
+INSERT INTO units (code, name) VALUES
+('ram', 'Ram'), ('hộp', 'Hộp'), ('cuộn', 'Cuộn'), ('cái', 'Cái'), ('kg', 'Kilogram'),
+('đôi', 'Đôi'), ('chai', 'Chai'), ('túi', 'Túi'), ('quyển', 'Quyển');
+
 INSERT INTO items (id, sku, name, unit, min_stock) VALUES
 (1, 'MH001', 'Giấy in A4 70gsm', 'ram', 15),
 (2, 'MH002', 'Giấy in A3', 'ram', 20),

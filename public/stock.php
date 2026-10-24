@@ -56,7 +56,7 @@ require __DIR__ . '/../templates/header.php';
         <?php foreach (Store::batchesOf($item['id']) as $batch): $sum = 0; ?>
           <tr>
             <td><?= e($item['sku']) ?></td><td><?= e($item['name']) ?></td><td><?= e($batch['code']) ?></td>
-            <td><?= e($batch['expiry'] ?? '—') ?></td><td><?= e($item['unit']) ?></td>
+            <td><?= e($batch['expiry'] ?? '—') ?></td><td><?= e($item['unit_name']) ?></td>
             <?php foreach ($allowed as $w): $have = StockLedger::balanceOf($balances, $w['id'], $batch['id']); $sum += $have; ?>
               <td class="num"><?= qty($have) ?></td>
             <?php endforeach; ?>
@@ -66,7 +66,7 @@ require __DIR__ . '/../templates/header.php';
         <?php endforeach; ?>
       <?php else: $sum = 0; ?>
         <tr>
-          <td><?= e($item['sku']) ?></td><td><?= e($item['name']) ?></td><td><?= e($item['unit']) ?></td>
+          <td><?= e($item['sku']) ?></td><td><?= e($item['name']) ?></td><td><?= e($item['unit_name']) ?></td>
           <?php foreach ($allowed as $w): $have = $perWarehouse[$w['id']][$item['id']] ?? 0; $sum += $have; ?>
             <td class="num"><?= qty($have) ?></td>
           <?php endforeach; ?>

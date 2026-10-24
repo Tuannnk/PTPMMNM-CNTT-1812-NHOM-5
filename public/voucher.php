@@ -87,7 +87,7 @@ require __DIR__ . '/../templates/header.php';
           <td><?= e($item['sku']) ?></td>
           <td><?= e($item['name']) ?></td>
           <td><?= e($batches[$line['batch_id']]['code']) ?></td>
-          <td><?= e($item['unit']) ?></td>
+          <td><?= e($item['unit_name']) ?></td>
           <td class="num"><?= $voucher['type'] === 'adjust' ? signedQty($line['qty']) : qty($line['qty']) ?></td>
           <td class="num"><?= qty(StockLedger::balanceOf($balances, $voucher['warehouse_id'], $line['batch_id'])) ?></td>
         </tr>

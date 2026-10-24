@@ -23,8 +23,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $data = $result['data'];
 }
 
-$items = Store::indexed('items');
-$batches = Store::all('batches');
+$items = array_filter(Store::indexed('items'), fn($item) => $item['active']);
+$batches = array_values(array_filter(Store::all('batches'), fn($batch) => $batch['active'] && isset($items[$batch['item_id']])));
 $rows = max(5, count($data['lines']) + 1);
 $labels = ['in' => 'Lập phiếu nhập', 'out' => 'Lập phiếu xuất', 'transfer' => 'Điều chuyển giữa hai kho'];
 $title = $labels[$type];
@@ -81,7 +81,7 @@ require __DIR__ . '/../templates/header.php';
       <label class="form-field">Kho đến
         <select name="to_warehouse_id" required>
           <option value="">— Chọn kho đến —</option>
-          <?php foreach (Store::all('warehouses') as $w): ?>
+          <?php foreach ($allowed as $w): ?>
             <option value="<?= $w['id'] ?>" <?= $data['to_warehouse_id'] === $w['id'] ? 'selected' : '' ?>><?= e($w['name']) ?></option>
           <?php endforeach; ?>
         </select>
@@ -105,7 +105,7 @@ require __DIR__ . '/../templates/header.php';
               <option value="">— Chọn lô —</option>
               <?php foreach ($batches as $b): $have = StockLedger::balanceOf($balances, $data['warehouse_id'], $b['id']); ?>
                 <option value="<?= $b['id'] ?>" <?= $line && $line['batch_id'] === $b['id'] ? 'selected' : '' ?>>
-                  <?= e($b['code'] . ' — ' . $items[$b['item_id']]['name'] . ' (' . $items[$b['item_id']]['unit'] . ')') ?><?= $type !== 'in' ? ' · tồn ' . qty($have) : '' ?>
+                  <?= e($b['code'] . ' — ' . $items[$b['item_id']]['name'] . ' (' . $items[$b['item_id']]['unit_name'] . ')') ?><?= $type !== 'in' ? ' · tồn ' . qty($have) : '' ?>
                 </option>
               <?php endforeach; ?>
             </select>

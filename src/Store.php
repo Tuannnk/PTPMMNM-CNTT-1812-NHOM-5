@@ -6,7 +6,7 @@ require_once __DIR__ . '/Database.php';
 final class Store
 {
     private const TABLES = [
-        'warehouses', 'users', 'items', 'batches', 'vouchers',
+        'warehouses', 'users', 'items', 'units', 'batches', 'vouchers',
         'voucher_lines', 'stock_movements', 'stock_counts',
     ];
 
@@ -39,6 +39,12 @@ final class Store
                 }
             }
             $rows = array_values($byId);
+        } elseif ($table === 'items') {
+            $unitNames = array_column(self::all('units'), 'name', 'code');
+            foreach ($rows as &$item) {
+                $item['unit_name'] = $unitNames[$item['unit']] ?? $item['unit'];
+            }
+            unset($item);
         } elseif ($table === 'stock_counts') {
             $lines = $db->query('SELECT * FROM stock_count_lines ORDER BY id')->fetchAll();
             $byCount = [];

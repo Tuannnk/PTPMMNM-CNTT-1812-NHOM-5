@@ -20,6 +20,9 @@ $nav = [
         ['items', '/items.php', 'Mặt hàng & lô'],
     ],
 ];
+if ($user && canManageCatalog($user)) {
+    $nav['Danh mục'][] = ['access', '/access.php', 'Tài khoản & phân quyền'];
+}
 $message = flash();
 ?>
 <!doctype html>

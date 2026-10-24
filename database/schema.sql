@@ -14,10 +14,19 @@ CREATE TABLE IF NOT EXISTS users (
     id            bigserial PRIMARY KEY,
     username      varchar(80) NOT NULL UNIQUE,
     full_name     varchar(160) NOT NULL,
-    role          varchar(20) NOT NULL CHECK (role IN ('staff', 'approver', 'counter')),
+    role          varchar(20) NOT NULL CHECK (role IN ('staff', 'approver', 'counter', 'admin')),
     password_hash text,
     active        boolean NOT NULL DEFAULT true,
     created_at    timestamptz NOT NULL DEFAULT now()
+);
+
+-- Danh mục đơn vị dùng code làm khóa để giữ tương thích với items.unit.
+CREATE TABLE IF NOT EXISTS units (
+    id         bigserial PRIMARY KEY,
+    code       varchar(40) NOT NULL UNIQUE,
+    name       varchar(80) NOT NULL UNIQUE,
+    active     boolean NOT NULL DEFAULT true,
+    created_at timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS user_warehouses (
@@ -30,7 +39,7 @@ CREATE TABLE IF NOT EXISTS items (
     id         bigserial PRIMARY KEY,
     sku        varchar(60) NOT NULL UNIQUE,
     name       varchar(200) NOT NULL,
-    unit       varchar(40) NOT NULL,
+    unit       varchar(40) NOT NULL REFERENCES units(code),
     min_stock  numeric(14, 3) NOT NULL DEFAULT 0 CHECK (min_stock >= 0),
     active     boolean NOT NULL DEFAULT true,
     created_at timestamptz NOT NULL DEFAULT now()
@@ -41,10 +50,25 @@ CREATE TABLE IF NOT EXISTS batches (
     item_id   bigint NOT NULL REFERENCES items(id),
     code      varchar(80) NOT NULL,
     expiry    date,
+    active    boolean NOT NULL DEFAULT true,
     created_at timestamptz NOT NULL DEFAULT now(),
     UNIQUE (item_id, code),
     UNIQUE (id, item_id)
 );
+
+-- Nâng cấp an toàn cho database đã được khởi tạo bằng phiên bản schema trước.
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
+ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('staff', 'approver', 'counter', 'admin'));
+ALTER TABLE batches ADD COLUMN IF NOT EXISTS active boolean NOT NULL DEFAULT true;
+INSERT INTO units (code, name)
+SELECT DISTINCT unit, unit FROM items
+ON CONFLICT (code) DO NOTHING;
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'items_unit_fkey') THEN
+        ALTER TABLE items ADD CONSTRAINT items_unit_fkey FOREIGN KEY (unit) REFERENCES units(code);
+    END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS vouchers (
     id              bigserial PRIMARY KEY,

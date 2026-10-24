@@ -3,10 +3,23 @@ declare(strict_types=1);
 // Quyền theo kho được kiểm tra phía máy chủ, không chỉ ẩn nút trên giao diện.
 
 const ROLE_LABELS = [
+    'admin' => 'Quản trị danh mục',
     'staff' => 'Nhân viên kho',
     'approver' => 'Người duyệt chứng từ',
     'counter' => 'Phụ trách kiểm kê',
 ];
+
+function canManageCatalog(array $user): bool
+{
+    return $user['role'] === 'admin';
+}
+
+function requireCatalogManager(array $user): void
+{
+    if (!canManageCatalog($user)) {
+        forbid('CATALOG_ADMIN_REQUIRED');
+    }
+}
 
 function currentUser(): ?array
 {
@@ -45,14 +58,16 @@ function requireLogin(): array
 
 function canAccessWarehouse(array $user, int $warehouseId): bool
 {
-    return in_array($warehouseId, $user['warehouses'], true);
+    $warehouse = Store::find('warehouses', $warehouseId);
+    return $warehouse !== null && $warehouse['active'] && in_array($warehouseId, $user['warehouses'], true);
 }
 
 function canConfirm(array $user, array $voucher): bool
 {
     return $user['role'] === 'approver'
         && $voucher['status'] === 'draft'
-        && canAccessWarehouse($user, $voucher['warehouse_id']);
+        && canAccessWarehouse($user, $voucher['warehouse_id'])
+        && ($voucher['type'] !== 'transfer' || canAccessWarehouse($user, $voucher['to_warehouse_id']));
 }
 
 function allowedWarehouses(array $user): array

@@ -27,7 +27,7 @@ Mỗi tài khoản chỉ thao tác trên **các kho được phân quyền**. Qu
 
 | #   | Chức năng                                                                                      | Trang                                            | Trạng thái            |
 | --- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------ | --------------------- |
-| 1   | Quản lý kho, mặt hàng, đơn vị tính, lô hàng và quyền theo kho                                  | `/warehouses.php`, `/items.php`                  | Giao diện ✔ · CSDL ⏳ |
+| 1   | Quản lý kho, mặt hàng, đơn vị tính, lô hàng và quyền theo kho                                  | `/warehouses.php`, `/items.php`, `/access.php`   | Đã ghi PostgreSQL; quản trị viên quản lý danh mục |
 | 2   | Lập, kiểm tra, xác nhận phiếu nhập/xuất; tra cứu tồn từ dòng phát sinh                         | `/voucher-new.php`, `/voucher.php`, `/stock.php` | Giao diện ✔ · CSDL ⏳ |
 | 3   | Điều chuyển giữa hai kho, có chứng từ ở cả nơi đi và nơi đến                                   | `/voucher-new.php?type=transfer`                 | Giao diện ✔ · CSDL ⏳ |
 | 4   | Tạo đợt kiểm kê, nhập số thực tế, tính chênh lệch, lập chứng từ điều chỉnh có lý do            | `/counts.php`, `/count.php`                      | Giao diện ✔ · CSDL ⏳ |
@@ -167,7 +167,7 @@ Lệnh sẽ hỏi mật khẩu database. `database/seed.sql` nạp 3 kho, 30 m�
 
 ### Tài khoản mẫu
 
-Trang đăng nhập dùng tên đăng nhập và mật khẩu. Bốn tài khoản mẫu dùng chung mật khẩu `KhoMau@2026`:
+Trang đăng nhập dùng tên đăng nhập và mật khẩu. Năm tài khoản mẫu dùng chung mật khẩu `KhoMau@2026`:
 
 | Tài khoản                | Vai trò              | Kho             |
 | ------------------------ | -------------------- | --------------- |
@@ -175,8 +175,9 @@ Trang đăng nhập dùng tên đăng nhập và mật khẩu. Bốn tài khoả
 | `nv.dn`, Trần Thị Bình   | Nhân viên kho        | KHO-DN          |
 | `duyet`, Lê Minh Châu    | Người duyệt chứng từ | Cả 3 kho        |
 | `kiemke`, Phạm Quốc Dũng | Phụ trách kiểm kê    | KHO-HN, KHO-HCM |
+| `quantri`, Quản trị hệ thống | Quản trị danh mục | Cả 3 kho |
 
-Mật khẩu được lưu dưới dạng hash trong database. Nếu dữ liệu mẫu đã được nạp trước khi có mật khẩu, chạy `psql -h 127.0.0.1 -U ptpmmnm_cntt_1812_nhom_5 -d ptpmmnm_cntt_1812_nhom_5 -f database/demo-passwords.sql` một lần. Đây là mật khẩu dùng cho dữ liệu giả lập.
+Mật khẩu được lưu dưới dạng hash trong database. Tài khoản `quantri` quản lý kho, mặt hàng, đơn vị tính, lô hàng, tài khoản và phạm vi kho; không dùng tài khoản mẫu này ngoài môi trường demo. Nếu database mẫu đã có từ phiên bản trước, chạy lại `database/schema.sql` rồi nạp `database/migrate-catalog-admin.sql` để thêm quản trị viên demo. Nếu dữ liệu mẫu đã được nạp trước khi có mật khẩu, chạy `database/demo-passwords.sql` một lần. Đây là mật khẩu dùng cho dữ liệu giả lập.
 
 ## Hai tình huống demo
 
@@ -234,6 +235,7 @@ Bảng dự kiến khi chuyển sang CSDL: `warehouses`, `items`, `batches`, `us
 - [x] Giao diện 5 nhóm chức năng, quyền theo kho, dữ liệu mẫu
 - [x] Quy tắc sổ phát sinh và kiểm thử logic
 - [x] Schema PostgreSQL và lớp đọc dữ liệu qua PDO
+- [x] Quản lý danh mục kho, mặt hàng, đơn vị tính, lô hàng và phân quyền tài khoản theo kho
 - [ ] Nạp dữ liệu mẫu vào PostgreSQL
 - [ ] Xác nhận chứng từ trong giao dịch: khóa dòng tồn (`SELECT … FOR UPDATE`), ràng buộc `CHECK`, khóa idempotency cho chứng từ
 - [ ] Điều chuyển trong một giao dịch; kiểm thử rollback khi gây lỗi giữa hai thao tác

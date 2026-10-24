@@ -42,7 +42,8 @@ function validateVoucher(array $input, array $user, array $balances): array
     if ($type === 'transfer') {
         $toWarehouseId = intField($input, 'to_warehouse_id');
         if ($toWarehouseId === null || $toWarehouseId === $warehouseId
-            || Store::find('warehouses', $toWarehouseId) === null) {
+            || Store::find('warehouses', $toWarehouseId) === null
+            || !canAccessWarehouse($user, $toWarehouseId)) {
             $errors[] = 'TO_WAREHOUSE_INVALID';
         }
     }
@@ -67,7 +68,7 @@ function validateVoucher(array $input, array $user, array $balances): array
         $filled++;
         $batchId = (int)$rawBatch;
         $qty = filter_var($rawQty, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
-        if (!isset($batches[$batchId])) {
+        if (!isset($batches[$batchId]) || !$batches[$batchId]['active']) {
             $errors[] = 'BATCH_INVALID';
             continue;
         }
