@@ -14,6 +14,11 @@ function canManageCatalog(array $user): bool
     return $user['role'] === 'admin';
 }
 
+function canCreateVoucher(array $user): bool
+{
+    return $user['role'] === 'staff';
+}
+
 function requireCatalogManager(array $user): void
 {
     if (!canManageCatalog($user)) {
@@ -65,9 +70,9 @@ function canAccessWarehouse(array $user, int $warehouseId): bool
 function canConfirm(array $user, array $voucher): bool
 {
     return $user['role'] === 'approver'
+        && in_array($voucher['type'], ['in', 'out'], true)
         && $voucher['status'] === 'draft'
-        && canAccessWarehouse($user, $voucher['warehouse_id'])
-        && ($voucher['type'] !== 'transfer' || canAccessWarehouse($user, $voucher['to_warehouse_id']));
+        && canAccessWarehouse($user, $voucher['warehouse_id']);
 }
 
 function allowedWarehouses(array $user): array

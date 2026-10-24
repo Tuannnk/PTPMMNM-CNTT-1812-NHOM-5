@@ -19,6 +19,7 @@ require __DIR__ . '/Store.php';
 require __DIR__ . '/StockLedger.php';
 require __DIR__ . '/Auth.php';
 require __DIR__ . '/Validation.php';
+require __DIR__ . '/VoucherService.php';
 
 const VOUCHER_TYPES = [
     'in' => 'Phiếu nhập',
@@ -30,6 +31,7 @@ const VOUCHER_TYPES = [
 const VOUCHER_STATUS = [
     'draft' => 'Chờ duyệt',
     'confirmed' => 'Đã xác nhận',
+    'rejected' => 'Không duyệt',
 ];
 
 function checkCsrf(array $input): void
@@ -90,7 +92,11 @@ function userName(?int $id): string
 
 function statusBadge(string $status): string
 {
-    $class = $status === 'confirmed' ? 'badge badge--ok' : 'badge badge--wait';
+    $class = match ($status) {
+        'confirmed' => 'badge badge--ok',
+        'rejected' => 'badge badge--rejected',
+        default => 'badge badge--wait',
+    };
     return '<span class="' . $class . '">' . e(VOUCHER_STATUS[$status] ?? $status) . '</span>';
 }
 
