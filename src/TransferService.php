@@ -12,7 +12,7 @@ final class TransferService
      */
     public static function createDraft(array $data, int $createdBy, string $requestKey): array
     {
-        if (!preg_match('/^[a-f0-9]{64}$/', $requestKey)) {
+        if (!preg_match('/^[a-f0-9]{48}$/', $requestKey)) {
             throw new InvalidArgumentException('TRANSFER_REQUEST_INVALID');
         }
         if ($data['type'] !== 'transfer' || !$data['lines']) {
