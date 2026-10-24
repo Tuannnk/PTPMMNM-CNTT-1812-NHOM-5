@@ -93,7 +93,7 @@ flowchart TD
     I --> J
 ```
 
-> **Lưu ý:** Điều chuyển được ghi theo các giai đoạn có transaction riêng: duyệt xuất trừ tồn kho đi; xác nhận nhận hàng cộng đúng số thực nhận ở kho đến. Phần thiếu được lưu cùng phiếu để kho đi xử lý bổ sung. Phiếu nhập/xuất thường được lưu nháp và chỉ ghi phát sinh sau khi duyệt; chốt kiểm kê vẫn mới kiểm tra rồi hiển thị bản xem trước.
+> **Lưu ý:** Điều chuyển được ghi theo các giai đoạn có transaction riêng: duyệt xuất trừ tồn kho đi; xác nhận nhận hàng cộng đúng số thực nhận ở kho đến. Phần thiếu được lưu cùng phiếu để kho đi xử lý bổ sung. Phiếu nhập/xuất thường được lưu nháp và chỉ ghi phát sinh sau khi duyệt. Chốt kiểm kê, phiếu điều chỉnh và các dòng phát sinh được ghi trong một giao dịch.
 
 ### Hai yêu cầu kỹ thuật
 

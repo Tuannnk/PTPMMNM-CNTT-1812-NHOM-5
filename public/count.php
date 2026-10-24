@@ -13,6 +13,7 @@ if (!canAccessWarehouse($user, $count['warehouse_id'])) {
 $editable = $count['status'] === 'counting' && in_array($user['role'], ['counter', 'approver'], true);
 
 $result = null;
+$closeError = '';
 $lines = array_map(fn($l) => $l + ['diff' => $l['actual_qty'] === null ? null : $l['actual_qty'] - $l['system_qty']], $count['lines']);
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     checkCsrf($_POST);
@@ -21,9 +22,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     $result = validateCount($_POST, $count);
     $lines = $result['data']['lines'];
+    if (!$result['errors']) {
+        try {
+            $outcome = StockCountService::close($count['id'], $user, $lines);
+            flash($outcome['already_closed']
+                ? 'Đợt kiểm kê đã được chốt trước đó.'
+                : 'Đã chốt kiểm kê, tạo chứng từ điều chỉnh và cập nhật sổ tồn trong cùng giao dịch.');
+            redirect('/count.php?id=' . $count['id']);
+        } catch (DomainException $e) {
+            if ($e->getMessage() === 'COUNT_EDIT_FORBIDDEN') forbid('COUNT_EDIT_FORBIDDEN');
+            $closeError = match ($e->getMessage()) {
+                'REASON_REQUIRED' => 'Mỗi dòng có chênh lệch cần ghi lý do.',
+                'COUNT_LINES_INVALID' => 'Dữ liệu kiểm kê không hợp lệ. Tải lại trang và nhập lại số thực tế.',
+                default => 'Đợt kiểm kê đã thay đổi hoặc không thể chốt. Tải lại trang rồi thử lại.',
+            };
+        } catch (Throwable $e) {
+            error_log(sprintf('Stock count close failed for id=%d: %s', $count['id'], $e->getMessage()));
+            $closeError = 'Không chốt được kiểm kê. Giao dịch đã được hoàn tác; vui lòng thử lại.';
+        }
+    }
 }
-$adjustLines = array_filter($lines, fn($l) => $l['diff'] !== null && $l['diff'] !== 0);
-
 $items = Store::indexed('items');
 $batches = Store::indexed('batches');
 $adjust = $count['adjust_voucher_id'] ? Store::find('vouchers', $count['adjust_voucher_id']) : null;
@@ -44,18 +62,8 @@ require __DIR__ . '/../templates/header.php';
 
 <?php if ($result !== null): ?>
   <?php $errors = $result['errors']; require __DIR__ . '/../templates/errors.php'; ?>
-  <?php if (!$result['errors']): ?>
-    <section class="preview" role="status">
-      <h2>Chênh lệch đã xác nhận</h2>
-      <?php if ($adjustLines): ?>
-        <p>Sẽ lập chứng từ điều chỉnh <?= count($adjustLines) ?> dòng (tổng <?= signedQty(array_sum(array_column($adjustLines, 'diff'))) ?>) và chốt đợt kiểm kê. Sau điều chỉnh, tồn khớp số thực tế.</p>
-      <?php else: ?>
-        <p>Không có chênh lệch; chốt đợt kiểm kê không cần chứng từ điều chỉnh.</p>
-      <?php endif; ?>
-      <p class="muted">Giao diện mẫu: chưa ghi CSDL.</p>
-    </section>
-  <?php endif; ?>
 <?php endif; ?>
+<?php if ($closeError !== ''): ?><div class="error-summary" role="alert"><?= e($closeError) ?></div><?php endif; ?>
 
 <form method="post" class="card form">
   <?= csrfInput() ?>

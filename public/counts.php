@@ -5,6 +5,7 @@ $user = requireLogin();
 $scope = array_column(allowedWarehouses($user), 'id');
 $counts = array_filter(Store::all('stock_counts'), fn($c) => in_array($c['warehouse_id'], $scope, true));
 $canCreate = in_array($user['role'], ['counter', 'approver'], true);
+$createError = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     checkCsrf($_POST);
@@ -12,8 +13,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!$canCreate || $warehouseId === null || !canAccessWarehouse($user, $warehouseId)) {
         forbid();
     }
-    flash('Đợt kiểm kê mới cho ' . warehouseName($warehouseId) . ' hợp lệ: sẽ chụp số tồn hiện tại của mọi lô (giao diện mẫu, chưa lưu CSDL).');
-    redirect('/counts.php');
+    try {
+        $countId = StockCountService::create($user, $warehouseId);
+        flash('Đã tạo đợt kiểm kê và chụp tồn hiện tại của các lô.');
+        redirect('/count.php?id=' . $countId);
+    } catch (DomainException $e) {
+        $createError = $e->getMessage() === 'COUNT_NEGATIVE_SYSTEM_STOCK'
+            ? 'Không thể tạo đợt kiểm kê vì kho đang có số tồn âm. Hãy đối chiếu sổ phát sinh trước.'
+            : 'Bạn không có quyền tạo đợt kiểm kê tại kho này.';
+    } catch (Throwable $e) {
+        error_log('Stock count creation failed: ' . $e->getMessage());
+        $createError = 'Không lưu được đợt kiểm kê. Vui lòng thử lại hoặc kiểm tra log máy chủ.';
+    }
 }
 
 $title = 'Kiểm kê';
@@ -32,6 +43,8 @@ require __DIR__ . '/../templates/header.php';
     </form>
   <?php endif; ?>
 </header>
+
+<?php if ($createError !== ''): ?><div class="error-summary" role="alert"><?= e($createError) ?></div><?php endif; ?>
 
 <div class="table-wrap">
 <table class="table">
