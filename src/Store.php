@@ -110,7 +110,8 @@ final class Store
     private static function normalize(array $row): array
     {
         foreach (['id', 'user_id', 'warehouse_id', 'item_id', 'batch_id', 'voucher_id', 'count_id',
-            'created_by', 'confirmed_by', 'to_warehouse_id', 'ref_id', 'adjust_voucher_id'] as $key) {
+            'created_by', 'confirmed_by', 'rejected_by', 'checked_by', 'received_by', 'cancelled_by',
+            'to_warehouse_id', 'ref_id', 'adjust_voucher_id'] as $key) {
             if (array_key_exists($key, $row) && $row[$key] !== null) {
                 $row[$key] = (int)$row[$key];
             }

@@ -102,9 +102,15 @@ CREATE TABLE IF NOT EXISTS voucher_lines (
     voucher_id bigint NOT NULL REFERENCES vouchers(id) ON DELETE CASCADE,
     item_id    bigint NOT NULL REFERENCES items(id),
     batch_id   bigint NOT NULL,
-    qty        numeric(14, 3) NOT NULL CHECK (qty > 0),
+    qty        numeric(14, 3) NOT NULL CHECK (qty <> 0),
+    reason     text NOT NULL DEFAULT '',
     FOREIGN KEY (batch_id, item_id) REFERENCES batches(id, item_id)
 );
+
+-- Phiếu nhập/xuất yêu cầu số dương ở bước kiểm tra; điều chỉnh kiểm kê cần giữ dấu +/-.
+ALTER TABLE voucher_lines DROP CONSTRAINT IF EXISTS voucher_lines_qty_check;
+ALTER TABLE voucher_lines ADD CONSTRAINT voucher_lines_qty_check CHECK (qty <> 0);
+ALTER TABLE voucher_lines ADD COLUMN IF NOT EXISTS reason text NOT NULL DEFAULT '';
 
 -- Giai đoạn kiểm hàng, duyệt xuất và nhận hàng của phiếu điều chuyển.
 CREATE TABLE IF NOT EXISTS transfer_workflow (
