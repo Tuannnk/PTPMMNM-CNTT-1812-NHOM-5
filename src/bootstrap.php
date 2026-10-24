@@ -21,6 +21,7 @@ require __DIR__ . '/Auth.php';
 require __DIR__ . '/Validation.php';
 require __DIR__ . '/VoucherService.php';
 require __DIR__ . '/TransferService.php';
+require __DIR__ . '/AdjustmentService.php';
 
 const VOUCHER_TYPES = [
     'in' => 'Phiếu nhập',
@@ -129,4 +130,16 @@ function signedQty(int $value): string
 {
     $class = $value < 0 ? 'qty-neg' : 'qty-pos';
     return '<span class="' . $class . '">' . ($value > 0 ? '+' : '') . qty($value) . '</span>';
+}
+
+function dateOnly(?string $value): string
+{
+    if ($value === null || $value === '') {
+        return '—';
+    }
+    try {
+        return (new DateTimeImmutable($value))->format('d/m/Y');
+    } catch (Throwable) {
+        return $value;
+    }
 }

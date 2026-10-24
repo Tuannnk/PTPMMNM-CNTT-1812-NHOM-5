@@ -70,7 +70,7 @@ require __DIR__ . '/../templates/header.php';
         <td><a href="/voucher.php?id=<?= $v['id'] ?>"><strong><?= e($v['code']) ?></strong></a></td>
         <td><?= typeBadge($v['type']) ?></td>
         <td><?= e(warehouseName($v['warehouse_id'])) ?><?= $v['to_warehouse_id'] ? ' → ' . e(warehouseName($v['to_warehouse_id'])) : '' ?></td>
-        <td><?= e($v['created_at']) ?></td>
+        <td><?= e(dateOnly($v['created_at'])) ?></td>
         <td><?= e(userName($v['created_by'])) ?></td>
         <td class="num"><?= count(Store::linesOf($v['id'])) ?></td>
         <td><?= voucherStatusBadge($v) ?></td>

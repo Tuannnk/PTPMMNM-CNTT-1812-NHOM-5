@@ -165,6 +165,22 @@ CREATE TABLE IF NOT EXISTS stock_movements (
     UNIQUE (voucher_id, warehouse_id, batch_id)
 );
 
+-- Điều chỉnh là phát sinh mới, gắn với dòng sổ gốc; qty là delta có dấu.
+CREATE TABLE IF NOT EXISTS adjustment_lines (
+    id               bigserial PRIMARY KEY,
+    voucher_id       bigint NOT NULL REFERENCES vouchers(id) ON DELETE CASCADE,
+    warehouse_id     bigint NOT NULL REFERENCES warehouses(id),
+    item_id          bigint NOT NULL REFERENCES items(id),
+    batch_id         bigint NOT NULL,
+    ref_movement_id  bigint NOT NULL REFERENCES stock_movements(id),
+    qty              numeric(14, 3) NOT NULL CHECK (qty <> 0),
+    reason           text NOT NULL CHECK (length(btrim(reason)) > 0),
+    FOREIGN KEY (batch_id, item_id) REFERENCES batches(id, item_id),
+    UNIQUE (voucher_id, ref_movement_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_adjustment_lines_voucher ON adjustment_lines (voucher_id);
+
 CREATE TABLE IF NOT EXISTS stock_counts (
     id                bigserial PRIMARY KEY,
     code              varchar(40) NOT NULL UNIQUE,
