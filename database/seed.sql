@@ -128,6 +128,13 @@ VALUES (203, 'PN-0201', 'in', 'draft', 2, NULL, 2, 'Chờ đối chiếu hóa đ
 INSERT INTO voucher_lines (voucher_id, item_id, batch_id, qty) VALUES
 (203, 4, 4, 5), (204, 1, 1, 2), (205, 3, 3, 3);
 
+INSERT INTO transfer_workflow (voucher_id, state, dispatched_at, received_at)
+SELECT id, CASE WHEN status = 'confirmed' THEN 'received' ELSE 'draft' END,
+       CASE WHEN status = 'confirmed' THEN confirmed_at ELSE NULL END,
+       CASE WHEN status = 'confirmed' THEN confirmed_at ELSE NULL END
+FROM vouchers WHERE type = 'transfer'
+ON CONFLICT (voucher_id) DO NOTHING;
+
 -- Đồng bộ sequence sau khi chèn ID tường minh.
 SELECT setval(pg_get_serial_sequence('warehouses', 'id'), (SELECT max(id) FROM warehouses), true);
 SELECT setval(pg_get_serial_sequence('users', 'id'), (SELECT max(id) FROM users), true);

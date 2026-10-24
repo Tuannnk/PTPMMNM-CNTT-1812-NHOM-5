@@ -19,7 +19,7 @@ require __DIR__ . '/Store.php';
 require __DIR__ . '/StockLedger.php';
 require __DIR__ . '/Auth.php';
 require __DIR__ . '/Validation.php';
-require __DIR__ . '/VoucherService.php';
+require __DIR__ . '/TransferService.php';
 
 const VOUCHER_TYPES = [
     'in' => 'Phiếu nhập',
@@ -32,6 +32,15 @@ const VOUCHER_STATUS = [
     'draft' => 'Chờ duyệt',
     'confirmed' => 'Đã xác nhận',
     'rejected' => 'Không duyệt',
+];
+
+const TRANSFER_STATE_LABELS = [
+    'draft' => 'Chờ kiểm hàng',
+    'checked' => 'Chờ duyệt xuất',
+    'in_transit' => 'Đang vận chuyển',
+    'partial' => 'Đã nhận thiếu',
+    'received' => 'Đã nhận đủ',
+    'cancelled' => 'Đã hủy',
 ];
 
 function checkCsrf(array $input): void
@@ -98,6 +107,16 @@ function statusBadge(string $status): string
         default => 'badge badge--wait',
     };
     return '<span class="' . $class . '">' . e(VOUCHER_STATUS[$status] ?? $status) . '</span>';
+}
+
+function voucherStatusBadge(array $voucher): string
+{
+    if ($voucher['type'] === 'transfer') {
+        $state = $voucher['transfer_state'] ?? 'draft';
+        $class = $state === 'received' ? 'badge badge--ok' : 'badge badge--wait';
+        return '<span class="' . $class . '">' . e(TRANSFER_STATE_LABELS[$state] ?? $state) . '</span>';
+    }
+    return statusBadge($voucher['status']);
 }
 
 function typeBadge(string $type): string

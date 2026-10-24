@@ -9,7 +9,14 @@ $type = field($_SERVER['REQUEST_METHOD'] === 'POST' ? $_POST : $_GET, 'type');
 if (!in_array($type, ['in', 'out', 'transfer'], true)) {
     $type = 'in';
 }
+if ($type === 'transfer' && $user['role'] !== 'staff') {
+    forbid('TRANSFER_CREATE_FORBIDDEN');
+}
 $allowed = allowedWarehouses($user);
+$activeWarehouses = array_values(array_filter(
+    Store::all('warehouses'),
+    fn($warehouse) => $warehouse['active']
+));
 $balances = StockLedger::balances(Store::all('stock_movements'));
 $result = null;
 $requestKey = $_SERVER['REQUEST_METHOD'] === 'POST'
@@ -27,6 +34,9 @@ $data = [
     'note' => '',
     'lines' => [],
 ];
+$requestKey = $_SERVER['REQUEST_METHOD'] === 'POST'
+    ? field($_POST, 'request_key')
+    : bin2hex(random_bytes(32));
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     checkCsrf($_POST);
@@ -36,11 +46,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $result['errors'][] = 'REQUEST_KEY_INVALID';
     }
     $data = $result['data'];
-    if (!$result['errors'] && in_array($type, ['in', 'out'], true)) {
-        $voucherId = VoucherService::createDraft($user, $data, $requestKey);
-        unset($_SESSION['voucher_request_key']);
-        flash('Đã lưu chứng từ nháp. Số tồn chỉ thay đổi sau khi người duyệt xác nhận.');
-        redirect('/voucher.php?id=' . $voucherId);
+    if (!$result['errors'] && $type === 'transfer') {
+        try {
+            $saved = TransferService::createDraft($data, $user['id'], $requestKey);
+            $query = Database::connection()->prepare('SELECT code FROM vouchers WHERE id = :id');
+            $query->execute(['id' => $saved['id']]);
+            $code = $query->fetchColumn();
+            flash($saved['created']
+                ? 'Đã lưu phiếu điều chuyển ' . $code . ' ở trạng thái chờ duyệt.'
+                : 'Phiếu điều chuyển ' . $code . ' đã được lưu trước đó; không tạo phiếu trùng.');
+            redirect('/voucher.php?id=' . $saved['id']);
+        } catch (Throwable $e) {
+            $result['errors'][] = 'TRANSFER_SAVE_FAILED';
+        }
     }
 }
 
@@ -57,7 +75,7 @@ require __DIR__ . '/../templates/header.php';
   <div>
     <h1><?= e($title) ?></h1>
     <p><?= $type === 'transfer'
-        ? 'Kho đi bị trừ và kho đến được cộng trong cùng một giao dịch khi chứng từ được xác nhận.'
+        ? 'Kiểm kê xác nhận hàng đã soạn, người duyệt cho xuất; kho đến ghi tăng theo số thực nhận.'
         : 'Chứng từ được lưu ở trạng thái chờ duyệt; số tồn chỉ thay đổi khi người duyệt xác nhận.' ?></p>
   </div>
 </header>
@@ -79,9 +97,9 @@ require __DIR__ . '/../templates/header.php';
       <p>
         <?= e(VOUCHER_TYPES[$type]) ?> tại <?= e(warehouseName($data['warehouse_id'])) ?><?= $type === 'transfer' ? ' → ' . e(warehouseName($data['to_warehouse_id'])) : '' ?>,
         <?= count($data['lines']) ?> dòng, tổng <?= qty(array_sum(array_column($data['lines'], 'qty'))) ?> đơn vị.
-        <?php if (in_array($type, ['in', 'out'], true)): ?>Sẽ lưu ở trạng thái <strong>Chờ duyệt</strong>.<?php else: ?>Điều chuyển hiện vẫn là bản xem trước, chưa ghi vào cơ sở dữ liệu.<?php endif; ?>
+        Sẽ lưu ở trạng thái <strong><?= $type === 'transfer' ? 'Chờ kiểm hàng' : 'Chờ duyệt' ?></strong>.
       </p>
-      <?php if (in_array($type, ['in', 'out'], true)): ?><p class="muted">Gửi lại biểu mẫu không tạo bản nháp trùng.</p><?php endif; ?>
+      <?php if ($type !== 'transfer'): ?><p class="muted">Phiếu nhập và xuất hiện vẫn là bản xem trước, chưa ghi CSDL.</p><?php endif; ?>
     </section>
   <?php endif; ?>
 <?php endif; ?>
@@ -90,6 +108,7 @@ require __DIR__ . '/../templates/header.php';
   <?= csrfInput() ?>
   <input type="hidden" name="request_key" value="<?= e($requestKey) ?>">
   <input type="hidden" name="type" value="<?= e($type) ?>">
+  <?php if ($type === 'transfer'): ?><input type="hidden" name="request_key" value="<?= e($requestKey) ?>"><?php endif; ?>
   <div class="form-row">
     <label class="form-field"><?= $type === 'transfer' ? 'Kho đi' : 'Kho' ?>
       <select name="warehouse_id" required>
@@ -103,10 +122,11 @@ require __DIR__ . '/../templates/header.php';
       <label class="form-field">Kho đến
         <select name="to_warehouse_id" required>
           <option value="">— Chọn kho đến —</option>
-          <?php foreach ($allowed as $w): ?>
+          <?php foreach ($activeWarehouses as $w): ?>
             <option value="<?= $w['id'] ?>" <?= $data['to_warehouse_id'] === $w['id'] ? 'selected' : '' ?>><?= e($w['name']) ?></option>
           <?php endforeach; ?>
         </select>
+        <small>Kho đến có thể là bất kỳ kho đang hoạt động; người duyệt cần quyền ở cả hai kho.</small>
       </label>
     <?php endif; ?>
     <label class="form-field form-field--wide">Ghi chú
@@ -140,7 +160,7 @@ require __DIR__ . '/../templates/header.php';
   </div>
   <?php if ($type !== 'in'): ?><p class="muted">Số tồn trong danh sách tính theo kho đang chọn lúc tải trang.</p><?php endif; ?>
   <div class="form-actions">
-    <button class="button">Kiểm tra và lưu nháp</button>
+    <button class="button"><?= $type === 'transfer' ? 'Kiểm tra và lưu phiếu điều chuyển' : 'Kiểm tra và lưu nháp' ?></button>
     <a class="button button--ghost" href="/vouchers.php">Hủy</a>
   </div>
 </form>

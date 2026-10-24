@@ -8,6 +8,7 @@ $vouchers = array_values(array_filter(Store::all('vouchers'), fn($v) => in_array
 $items = Store::indexed('items');
 
 $drafts = array_filter($vouchers, fn($v) => $v['status'] === 'draft');
+$shortageRequests = array_filter($vouchers, fn($v) => $v['type'] === 'transfer' && ($v['transfer_state'] ?? '') === 'partial');
 $totalByItem = StockLedger::byItem($movements);
 $low = array_filter($items, fn($i) => ($totalByItem[$i['id']] ?? 0) < $i['min_stock']);
 $counting = array_filter(Store::all('stock_counts'), fn($c) => $c['status'] === 'counting' && in_array($c['warehouse_id'], $scope, true));
@@ -38,7 +39,7 @@ require __DIR__ . '/../templates/header.php';
 
 <div class="grid-2">
   <section class="card">
-    <h2>Chờ duyệt</h2>
+    <h2>Phiếu chờ xử lý</h2>
     <?php if (!$drafts): ?>
       <p class="empty">Không có chứng từ chờ duyệt.</p>
     <?php else: ?>
@@ -47,6 +48,7 @@ require __DIR__ . '/../templates/header.php';
           <li>
             <a href="/voucher.php?id=<?= $v['id'] ?>"><strong><?= e($v['code']) ?></strong></a>
             <?= typeBadge($v['type']) ?>
+            <?= voucherStatusBadge($v) ?>
             <span class="muted"><?= e(warehouseName($v['warehouse_id'])) ?><?= $v['to_warehouse_id'] ? ' → ' . e(warehouseName($v['to_warehouse_id'])) : '' ?> · <?= e($v['created_at']) ?></span>
           </li>
         <?php endforeach; ?>
@@ -57,6 +59,15 @@ require __DIR__ . '/../templates/header.php';
       <ul class="list">
         <?php foreach ($counting as $c): ?>
           <li><a href="/count.php?id=<?= $c['id'] ?>"><strong><?= e($c['code']) ?></strong></a> <span class="muted"><?= e(warehouseName($c['warehouse_id'])) ?> · <?= count($c['lines']) ?> dòng</span></li>
+        <?php endforeach; ?>
+      </ul>
+    <?php endif; ?>
+    <?php if ($shortageRequests): ?>
+      <h3>Yêu cầu bổ sung từ kho nhận</h3>
+      <ul class="list">
+        <?php foreach ($shortageRequests as $v): ?>
+          <li><a href="/voucher.php?id=<?= $v['id'] ?>"><strong><?= e($v['code']) ?></strong></a>
+            <span class="muted"><?= e(warehouseName($v['to_warehouse_id'])) ?> đã ghi nhận thiếu hàng · xem biên bản nhận để xử lý bổ sung</span></li>
         <?php endforeach; ?>
       </ul>
     <?php endif; ?>

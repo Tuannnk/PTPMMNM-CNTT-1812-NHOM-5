@@ -69,10 +69,15 @@ function canAccessWarehouse(array $user, int $warehouseId): bool
 
 function canConfirm(array $user, array $voucher): bool
 {
-    return $user['role'] === 'approver'
-        && in_array($voucher['type'], ['in', 'out'], true)
-        && $voucher['status'] === 'draft'
-        && canAccessWarehouse($user, $voucher['warehouse_id']);
+    if ($user['role'] !== 'approver' || $voucher['status'] !== 'draft'
+        || !canAccessWarehouse($user, $voucher['warehouse_id'])) {
+        return false;
+    }
+    if ($voucher['type'] === 'transfer') {
+        return ($voucher['transfer_state'] ?? 'draft') === 'checked'
+            && canAccessWarehouse($user, $voucher['to_warehouse_id']);
+    }
+    return true;
 }
 
 function allowedWarehouses(array $user): array

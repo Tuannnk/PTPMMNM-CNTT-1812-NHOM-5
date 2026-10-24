@@ -22,7 +22,13 @@ final class Store
         }
 
         $db = Database::connection();
-        $rows = $db->query('SELECT * FROM ' . $table . ' ORDER BY id')->fetchAll();
+        $sql = $table === 'vouchers'
+            ? 'SELECT v.*, tw.state AS transfer_state, tw.cancel_reason AS transfer_cancel_reason,
+                      tw.checked_by AS transfer_checked_by, tw.received_by AS transfer_received_by,
+                      tw.dispatched_at AS transfer_dispatched_at, tw.received_at AS transfer_received_at
+               FROM vouchers v LEFT JOIN transfer_workflow tw ON tw.voucher_id = v.id ORDER BY v.id'
+            : 'SELECT * FROM ' . $table . ' ORDER BY id';
+        $rows = $db->query($sql)->fetchAll();
         $rows = array_map([self::class, 'normalize'], $rows);
 
         if ($table === 'users') {

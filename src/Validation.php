@@ -17,6 +17,7 @@ const ERROR_LABELS = [
     'NOTE_TOO_LONG' => 'Ghi chú tối đa 255 ký tự.',
     'ACTUAL_INVALID' => 'Số thực tế phải là số nguyên không âm.',
     'REASON_REQUIRED' => 'Dòng có chênh lệch phải ghi lý do.',
+    'TRANSFER_SAVE_FAILED' => 'Không lưu được phiếu điều chuyển. Hãy thử gửi lại; hệ thống sẽ tránh tạo phiếu trùng.',
 ];
 
 /** Đếm theo ký tự UTF-8 (không cần mbstring); chuỗi sai UTF-8 bị từ chối. */
@@ -46,9 +47,9 @@ function validateVoucher(array $input, array $user, array $balances): array
     $toWarehouseId = null;
     if ($type === 'transfer') {
         $toWarehouseId = intField($input, 'to_warehouse_id');
+        $toWarehouse = $toWarehouseId === null ? null : Store::find('warehouses', $toWarehouseId);
         if ($toWarehouseId === null || $toWarehouseId === $warehouseId
-            || Store::find('warehouses', $toWarehouseId) === null
-            || !canAccessWarehouse($user, $toWarehouseId)) {
+            || $toWarehouse === null || !$toWarehouse['active']) {
             $errors[] = 'TO_WAREHOUSE_INVALID';
         }
     }

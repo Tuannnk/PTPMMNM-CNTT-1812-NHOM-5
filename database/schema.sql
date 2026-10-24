@@ -86,27 +86,16 @@ CREATE TABLE IF NOT EXISTS vouchers (
     reject_reason   text NOT NULL DEFAULT '',
     note            text NOT NULL DEFAULT '',
     ref_id          bigint REFERENCES vouchers(id),
-    idempotency_key varchar(64),
+    request_key     varchar(64),
     CHECK ((type = 'transfer' AND to_warehouse_id IS NOT NULL AND to_warehouse_id <> warehouse_id)
         OR (type <> 'transfer' AND to_warehouse_id IS NULL)),
     CHECK ((status = 'confirmed' AND confirmed_by IS NOT NULL AND confirmed_at IS NOT NULL)
         OR status <> 'confirmed')
 );
 
-ALTER TABLE vouchers ADD COLUMN IF NOT EXISTS idempotency_key varchar(64);
-ALTER TABLE vouchers ADD COLUMN IF NOT EXISTS rejected_by bigint REFERENCES users(id);
-ALTER TABLE vouchers ADD COLUMN IF NOT EXISTS rejected_at timestamptz;
-ALTER TABLE vouchers ADD COLUMN IF NOT EXISTS reject_reason text NOT NULL DEFAULT '';
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'vouchers_rejection_metadata_check') THEN
-        ALTER TABLE vouchers ADD CONSTRAINT vouchers_rejection_metadata_check
-            CHECK ((status = 'rejected' AND rejected_by IS NOT NULL AND rejected_at IS NOT NULL AND btrim(reject_reason) <> '')
-                OR (status <> 'rejected' AND rejected_by IS NULL AND rejected_at IS NULL AND reject_reason = ''));
-    END IF;
-END $$;
-CREATE UNIQUE INDEX IF NOT EXISTS idx_vouchers_idempotency_key
-    ON vouchers (idempotency_key) WHERE idempotency_key IS NOT NULL;
+-- Khóa gửi lại cho các phiếu điều chuyển; NULL giữ tương thích với chứng từ cũ.
+ALTER TABLE vouchers ADD COLUMN IF NOT EXISTS request_key varchar(64);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_vouchers_request_key ON vouchers (request_key);
 
 CREATE TABLE IF NOT EXISTS voucher_lines (
     id         bigserial PRIMARY KEY,
@@ -116,6 +105,52 @@ CREATE TABLE IF NOT EXISTS voucher_lines (
     qty        numeric(14, 3) NOT NULL CHECK (qty > 0),
     FOREIGN KEY (batch_id, item_id) REFERENCES batches(id, item_id)
 );
+
+-- Giai đoạn kiểm hàng, duyệt xuất và nhận hàng của phiếu điều chuyển.
+CREATE TABLE IF NOT EXISTS transfer_workflow (
+    voucher_id   bigint PRIMARY KEY REFERENCES vouchers(id) ON DELETE CASCADE,
+    state        varchar(24) NOT NULL DEFAULT 'draft'
+                 CHECK (state IN ('draft', 'checked', 'in_transit', 'partial', 'received', 'cancelled')),
+    checked_by   bigint REFERENCES users(id),
+    checked_at   timestamptz,
+    dispatched_at timestamptz,
+    received_by  bigint REFERENCES users(id),
+    received_at  timestamptz,
+    cancelled_by bigint REFERENCES users(id),
+    cancelled_at timestamptz,
+    cancel_reason text NOT NULL DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS transfer_checks (
+    voucher_line_id bigint PRIMARY KEY REFERENCES voucher_lines(id) ON DELETE CASCADE,
+    voucher_id      bigint NOT NULL REFERENCES vouchers(id) ON DELETE CASCADE,
+    checked_qty     numeric(14, 3) NOT NULL CHECK (checked_qty >= 0),
+    note            text NOT NULL DEFAULT '',
+    checked_by      bigint NOT NULL REFERENCES users(id),
+    checked_at      timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS transfer_receipt_lines (
+    voucher_line_id bigint PRIMARY KEY REFERENCES voucher_lines(id) ON DELETE CASCADE,
+    voucher_id      bigint NOT NULL REFERENCES vouchers(id) ON DELETE CASCADE,
+    received_qty    numeric(14, 3) NOT NULL CHECK (received_qty >= 0),
+    missing_qty     numeric(14, 3) NOT NULL CHECK (missing_qty >= 0),
+    note            text NOT NULL DEFAULT '',
+    received_by     bigint NOT NULL REFERENCES users(id),
+    received_at     timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_transfer_workflow_state ON transfer_workflow (state);
+CREATE INDEX IF NOT EXISTS idx_transfer_checks_voucher ON transfer_checks (voucher_id);
+CREATE INDEX IF NOT EXISTS idx_transfer_receipts_voucher ON transfer_receipt_lines (voucher_id);
+
+-- Backfill các phiếu điều chuyển đã có trước khi bật quy trình nhận hàng.
+INSERT INTO transfer_workflow (voucher_id, state, dispatched_at, received_at)
+SELECT id, CASE WHEN status = 'confirmed' THEN 'received' ELSE 'draft' END,
+       CASE WHEN status = 'confirmed' THEN confirmed_at ELSE NULL END,
+       CASE WHEN status = 'confirmed' THEN confirmed_at ELSE NULL END
+FROM vouchers WHERE type = 'transfer'
+ON CONFLICT (voucher_id) DO NOTHING;
 
 -- Số tồn được tính từ sổ phát sinh; không lưu số tồn có thể lệch với lịch sử.
 CREATE TABLE IF NOT EXISTS stock_movements (

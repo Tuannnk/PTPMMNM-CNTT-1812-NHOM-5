@@ -73,8 +73,7 @@ require __DIR__ . '/../templates/header.php';
         <td><?= e($v['created_at']) ?></td>
         <td><?= e(userName($v['created_by'])) ?></td>
         <td class="num"><?= count(Store::linesOf($v['id'])) ?></td>
-        <td><?= statusBadge($v['status']) ?></td>
-        <?php if ($user['role'] === 'approver'): ?><td><?php if (canConfirm($user, $v)): ?><a class="text-link" href="/voucher.php?id=<?= $v['id'] ?>">Mở để kiểm tra, duyệt hoặc từ chối</a><?php elseif ($v['status'] === 'draft' && $v['type'] === 'transfer'): ?>Chưa hỗ trợ duyệt điều chuyển<?php else: ?>—<?php endif; ?></td><?php endif; ?>
+        <td><?= voucherStatusBadge($v) ?></td>
       </tr>
     <?php endforeach; ?>
   </tbody>
