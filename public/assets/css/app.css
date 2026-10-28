@@ -18,6 +18,8 @@
   --warn-soft: #fff4d8;
   --danger: #b42332;
   --danger-soft: #fdebed;
+  --danger-button: #b42332;
+  --danger-button-hover: #941b28;
   --violet: #6845a5;
   --violet-soft: #f0eafb;
   --sidebar: #12233a;
@@ -49,6 +51,8 @@
     --warn-soft: #403619;
     --danger: #ff939b;
     --danger-soft: #45252b;
+    --danger-button: #8f2935;
+    --danger-button-hover: #a3313f;
     --violet: #c1a8f3;
     --violet-soft: #302748;
     --sidebar: #0c1420;
@@ -109,6 +113,8 @@ code { font-size: .8em; color: var(--muted); }
 .button:active { transform: translateY(1px); }
 .button--ghost { border-color: var(--line); background: var(--surface); color: var(--text); }
 .button--ghost:hover { border-color: var(--primary); background: var(--primary-soft); color: var(--primary); box-shadow: none; }
+.button--danger { border-color: var(--danger-button); background: var(--danger-button); color: #fff; }
+.button--danger:hover { border-color: var(--danger-button-hover); background: var(--danger-button-hover); color: #fff; box-shadow: 0 4px 12px color-mix(in srgb, var(--danger-button) 24%, transparent); }
 .text-link { font-size: .82rem; font-weight: 680; text-decoration: none; }
 .text-link:hover { text-decoration: underline; }
 .card { margin-bottom: 1.15rem; padding: 1.2rem 1.3rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); }
@@ -161,6 +167,15 @@ code { font-size: .8em; color: var(--muted); }
 .table--form td { padding: .38rem .58rem; }
 .table--form select, .table--form input { width: 100%; }
 .table--form td.num input { max-width: 130px; text-align: right; }
+.table--form .line-number { width: 42px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.table--form .line-quantity { width: 150px; }
+.table--form .line-action { width: 54px; text-align: center; }
+.button--icon { width: 36px; min-height: 36px; padding: 0; border-color: transparent; background: transparent; color: var(--muted); font-size: 1.2rem; }
+.button--icon:hover { border-color: var(--danger-soft); background: var(--danger-soft); color: var(--danger); box-shadow: none; }
+.button--icon:disabled { cursor: not-allowed; opacity: .35; }
+.line-controls { display: flex; flex-wrap: wrap; align-items: center; gap: .7rem; margin-top: .7rem; }
+.button--add-line { min-height: 36px; border-style: dashed; }
+.button--add-line span { font-size: 1rem; line-height: 1; }
 .num { text-align: right !important; font-variant-numeric: tabular-nums; }
 .row-diff { background: var(--warn-soft); }
 
@@ -187,6 +202,14 @@ textarea { display: block; width: min(100%, 340px); resize: vertical; }
 .inline-form select { min-width: 160px; }
 .reject-form { display: grid; gap: .4rem; }
 .reject-form .label { margin: 0; }
+.reject-disclosure { position: relative; }
+.reject-disclosure > summary { list-style: none; }
+.reject-disclosure > summary::-webkit-details-marker { display: none; }
+.reject-disclosure[open] > summary { border-color: var(--primary); background: var(--primary-soft); color: var(--primary); }
+.reject-form { position: absolute; z-index: 8; top: calc(100% + .65rem); right: 0; display: grid; width: min(360px, calc(100vw - 2rem)); gap: .65rem; padding: 1rem; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: var(--shadow-raised); }
+.reject-form .label span { color: var(--danger); }
+.reject-form textarea { width: 100%; }
+.reject-form .button { justify-self: end; }
 .field-error { margin: 0; color: var(--danger); font-size: .78rem; }
 .notice, .preview, .error-summary { margin-bottom: 1rem; padding: .82rem 1rem; border-radius: 11px; }
 .notice { border: 1px solid color-mix(in srgb, var(--ok) 25%, var(--line)); background: var(--ok-soft); color: var(--ok); font-size: .84rem; font-weight: 650; }
@@ -279,7 +302,8 @@ legend { padding: 0 .35rem; color: var(--muted); font-size: .75rem; font-weight:
   .table { min-width: 680px; }
   .table--compact { min-width: 0; }
   .page-head .actions > *, .page-head .actions form { flex: 1 1 auto; }
-  .reject-form { flex-basis: 100%; }
+  .reject-disclosure { position: static; }
+  .reject-form { top: auto; right: 1rem; }
   .login-page { padding: .6rem 0 1rem; }
   .login-panel { border-radius: 15px; }
   .login-content { padding: 1.7rem 1.25rem 2rem; }

@@ -21,7 +21,7 @@ $balances = StockLedger::balances(Store::all('stock_movements'));
 $result = null;
 $requestKey = $_SERVER['REQUEST_METHOD'] === 'POST'
     ? field($_POST, 'request_key')
-    : bin2hex(random_bytes(24));
+    : bin2hex(random_bytes(32));
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     $_SESSION['voucher_request_key'] = $requestKey;
 }
@@ -31,14 +31,30 @@ $data = [
     'note' => '',
     'lines' => [],
 ];
+$formLines = [['batch_id' => 0, 'qty' => '']];
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     checkCsrf($_POST);
     // Kiểm tra quyền theo kho nằm trong validateVoucher: gửi thẳng warehouse_id của kho khác vẫn bị từ chối.
     $result = validateVoucher($_POST, $user, $balances);
-    if (!preg_match('/^[a-f0-9]{48}$/', field($_POST, 'request_key'))) {
+    if (!preg_match('/^[a-f0-9]{64}$/', field($_POST, 'request_key'))) {
         $result['errors'][] = 'REQUEST_KEY_INVALID';
     }
     $data = $result['data'];
+    $postedBatchIds = listField($_POST, 'batch_id');
+    $postedQuantities = listField($_POST, 'qty');
+    $formLines = [];
+    $postedLineCount = max(count($postedBatchIds), count($postedQuantities));
+    for ($index = 0; $index < $postedLineCount; $index++) {
+        $batchValue = $postedBatchIds[$index] ?? '';
+        $quantityValue = $postedQuantities[$index] ?? '';
+        if ($batchValue === '' && $quantityValue === '') continue;
+        $parsedBatch = filter_var($batchValue, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        $formLines[] = [
+            'batch_id' => $parsedBatch === false ? 0 : $parsedBatch,
+            'qty' => $quantityValue,
+        ];
+    }
+    if (!$formLines) $formLines[] = ['batch_id' => 0, 'qty' => ''];
     if (!$result['errors'] && $type === 'transfer') {
         try {
             $saved = TransferService::createDraft($data, $user['id'], $requestKey);
@@ -66,7 +82,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $items = array_filter(Store::indexed('items'), fn($item) => $item['active']);
 $batches = array_values(array_filter(Store::all('batches'), fn($batch) => $batch['active'] && isset($items[$batch['item_id']])));
-$rows = max(5, count($data['lines']) + 1);
 $labels = ['in' => 'Lập phiếu nhập', 'out' => 'Lập phiếu xuất', 'transfer' => 'Điều chuyển giữa hai kho'];
 $title = $labels[$type];
 $active = ['in' => 'voucher-in', 'out' => 'voucher-out', 'transfer' => 'transfer'][$type];
@@ -137,26 +152,46 @@ require __DIR__ . '/../templates/header.php';
   <h2>Dòng hàng</h2>
   <div class="table-wrap">
   <table class="table table--form">
-    <thead><tr><th>#</th><th>Lô hàng — mặt hàng</th><th class="num">Số lượng</th></tr></thead>
+    <thead><tr><th class="line-number">#</th><th>Lô hàng — mặt hàng</th><th class="num line-quantity">Số lượng</th><th class="line-action"></th></tr></thead>
     <tbody>
-      <?php for ($i = 0; $i < $rows; $i++): $line = $data['lines'][$i] ?? null; ?>
-        <tr>
-          <td><?= $i + 1 ?></td>
+      <?php foreach ($formLines as $i => $line): ?>
+        <tr class="voucher-line">
+          <td class="line-number"><?= $i + 1 ?></td>
           <td>
             <select name="batch_id[]" aria-label="Lô hàng dòng <?= $i + 1 ?>">
               <option value="">— Chọn lô —</option>
               <?php foreach ($batches as $b): $have = StockLedger::balanceOf($balances, $data['warehouse_id'], $b['id']); ?>
-                <option value="<?= $b['id'] ?>" <?= $line && $line['batch_id'] === $b['id'] ? 'selected' : '' ?>>
+                <option value="<?= $b['id'] ?>" <?= (int)$line['batch_id'] === $b['id'] ? 'selected' : '' ?>>
                   <?= e($b['code'] . ' — ' . $items[$b['item_id']]['name'] . ' (' . $items[$b['item_id']]['unit_name'] . ')') ?><?= $type !== 'in' ? ' · tồn ' . qty($have) : '' ?>
                 </option>
               <?php endforeach; ?>
             </select>
           </td>
-          <td class="num"><input type="number" name="qty[]" min="1" step="1" inputmode="numeric" value="<?= $line && $line['qty'] > 0 ? $line['qty'] : '' ?>" aria-label="Số lượng dòng <?= $i + 1 ?>"></td>
+          <td class="num"><input type="number" name="qty[]" min="1" step="1" inputmode="numeric" value="<?= e((string)$line['qty']) ?>" aria-label="Số lượng dòng <?= $i + 1 ?>"></td>
+          <td class="line-action"><button type="button" class="button button--icon button--remove-line" aria-label="Xóa dòng hàng">×</button></td>
         </tr>
-      <?php endfor; ?>
+      <?php endforeach; ?>
     </tbody>
   </table>
+  </div>
+  <template id="voucher-line-template">
+    <tr class="voucher-line">
+      <td class="line-number"></td>
+      <td>
+        <select name="batch_id[]" aria-label="Lô hàng">
+          <option value="">— Chọn lô —</option>
+          <?php foreach ($batches as $b): $have = StockLedger::balanceOf($balances, $data['warehouse_id'], $b['id']); ?>
+            <option value="<?= $b['id'] ?>"><?= e($b['code'] . ' — ' . $items[$b['item_id']]['name'] . ' (' . $items[$b['item_id']]['unit_name'] . ')') ?><?= $type !== 'in' ? ' · tồn ' . qty($have) : '' ?></option>
+          <?php endforeach; ?>
+        </select>
+      </td>
+      <td class="num"><input type="number" name="qty[]" min="1" step="1" inputmode="numeric" aria-label="Số lượng"></td>
+      <td class="line-action"><button type="button" class="button button--icon button--remove-line" aria-label="Xóa dòng hàng">×</button></td>
+    </tr>
+  </template>
+  <div class="line-controls">
+    <button type="button" class="button button--ghost button--add-line" id="add-voucher-line"><span aria-hidden="true">＋</span> Thêm dòng hàng</button>
+    <span class="muted">Mỗi dòng chọn một lô và nhập số lượng.</span>
   </div>
   <?php if ($type !== 'in'): ?><p class="muted">Số tồn trong danh sách tính theo kho đang chọn lúc tải trang.</p><?php endif; ?>
   <div class="form-actions">
@@ -182,4 +217,36 @@ require __DIR__ . '/../templates/header.php';
 })();
 </script>
 <?php endif; ?>
+<script>
+(() => {
+  const body = document.querySelector('.table--form tbody');
+  const template = document.getElementById('voucher-line-template');
+  const addButton = document.getElementById('add-voucher-line');
+  if (!body || !template || !addButton) return;
+  const refresh = () => {
+    const rows = [...body.querySelectorAll('.voucher-line')];
+    rows.forEach((row, index) => {
+      row.querySelector('.line-number').textContent = index + 1;
+      row.querySelectorAll('select,input').forEach(control => {
+        const label = control.getAttribute('aria-label') || '';
+        control.setAttribute('aria-label', label.replace(/ dòng \d+$/, '') + ` dòng ${index + 1}`);
+      });
+      row.querySelector('.button--remove-line').disabled = rows.length === 1;
+    });
+  };
+  addButton.addEventListener('click', () => {
+    body.append(template.content.cloneNode(true));
+    refresh();
+    body.lastElementChild.querySelector('select').focus();
+  });
+  body.addEventListener('click', event => {
+    const remove = event.target.closest('.button--remove-line');
+    if (remove && body.querySelectorAll('.voucher-line').length > 1) {
+      remove.closest('.voucher-line').remove();
+      refresh();
+    }
+  });
+  refresh();
+})();
+</script>
 <?php require __DIR__ . '/../templates/footer.php'; ?>
