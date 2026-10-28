@@ -1,4 +1,4 @@
-<footer class="site-footer">Dữ liệu giả lập phục vụ học tập. Giao diện mẫu: các thao tác ghi chỉ kiểm tra và xem trước, chưa lưu CSDL.</footer>
+<footer class="site-footer">Kho đa điểm · Quản lý danh mục, chứng từ và kiểm kê theo phạm vi kho được phân quyền.</footer>
 </main>
 </div>
 </body>

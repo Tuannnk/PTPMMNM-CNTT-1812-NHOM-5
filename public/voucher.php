@@ -31,6 +31,7 @@ $negative = [];
 $confirmError = '';
 $rejectError = '';
 $rejectReasonInput = '';
+$showRejectForm = false;
 $workflowError = '';
 $canCheckTransfer = $voucher['type'] === 'transfer'
     && ($voucher['transfer_state'] ?? 'draft') === 'draft'
@@ -155,6 +156,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             forbid($decision === 'reject' ? 'REJECT_FORBIDDEN' : 'CONFIRM_FORBIDDEN');
         }
         if ($decision === 'reject') {
+            $showRejectForm = true;
             $rejectReasonInput = field($_POST, 'reject_reason');
             if ($rejectReasonInput === '' || !textFits($rejectReasonInput, 255)) {
                 $rejectError = $rejectReasonInput === ''
@@ -234,13 +236,16 @@ require __DIR__ . '/../templates/header.php';
         <?= csrfInput() ?><input type="hidden" name="decision" value="confirm">
         <button class="button"><?= $voucher['type']==='adjust'?'Xác nhận điều chỉnh và ghi sổ':'Phê duyệt và ghi sổ' ?></button>
       </form>
-      <form method="post" class="reject-form">
-        <?= csrfInput() ?><input type="hidden" name="decision" value="reject">
-        <label class="label" for="reject_reason">Lý do không duyệt (bắt buộc)</label>
-        <textarea id="reject_reason" name="reject_reason" rows="2" maxlength="255" required><?= e($rejectReasonInput) ?></textarea>
-        <?php if ($rejectError !== ''): ?><p class="field-error" role="alert"><?= e($rejectError) ?></p><?php endif; ?>
-        <button class="button button--ghost">Không duyệt phiếu</button>
-      </form>
+      <details class="reject-disclosure" <?= $showRejectForm ? 'open' : '' ?>>
+        <summary class="button button--ghost">Không duyệt phiếu</summary>
+        <form method="post" class="reject-form">
+          <?= csrfInput() ?><input type="hidden" name="decision" value="reject">
+          <label class="label" for="reject_reason">Lý do không duyệt <span>(bắt buộc)</span></label>
+          <textarea id="reject_reason" name="reject_reason" rows="3" maxlength="255" required><?= e($rejectReasonInput) ?></textarea>
+          <?php if ($rejectError !== ''): ?><p class="field-error" role="alert"><?= e($rejectError) ?></p><?php endif; ?>
+          <button class="button button--danger">Xác nhận không duyệt</button>
+        </form>
+      </details>
     </div>
   <?php endif; ?>
   <?php if ($voucher['type'] === 'transfer' && $voucher['ref_id'] === null && ($voucher['transfer_state'] ?? '') === 'partial'
