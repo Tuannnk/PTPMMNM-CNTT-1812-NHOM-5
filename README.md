@@ -6,13 +6,6 @@ Phần mềm mã nguồn mở giúp một đơn vị có nhiều kho theo dõi s
 
 > **Trạng thái hiện tại:** ứng dụng đọc và ghi dữ liệu qua PostgreSQL; phiếu nhập/xuất, điều chuyển, kiểm kê và điều chỉnh được ghi sổ. Lịch sử hỗ trợ lọc kỳ, đối chiếu với kiểm kê đã chốt và xuất CSV.
 
-## Thành viên
-
-| Họ tên | MSSV | Phụ trách |
-| ------ | ---- | --------- |
-| \_\_   |      |           |
-| \_\_   |      |           |
-
 ## Người sử dụng
 
 | Vai trò                 | Quyền                                                                            |
