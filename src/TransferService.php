@@ -12,7 +12,9 @@ final class TransferService
      */
     public static function createDraft(array $data, int $createdBy, string $requestKey): array
     {
-        if (!preg_match('/^[a-f0-9]{48}$/', $requestKey)) {
+        // Phiếu thường sinh khóa 32 byte (64 ký tự hex), còn phiếu bổ sung
+        // hiện dùng khóa 24 byte (48 ký tự hex).
+        if (!preg_match('/^(?:[a-f0-9]{48}|[a-f0-9]{64})$/', $requestKey)) {
             throw new InvalidArgumentException('TRANSFER_REQUEST_INVALID');
         }
         if ($data['type'] !== 'transfer' || !$data['lines']) {

@@ -66,6 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 : 'Phiếu điều chuyển ' . $code . ' đã được lưu trước đó; không tạo phiếu trùng.');
             redirect('/voucher.php?id=' . $saved['id']);
         } catch (Throwable $e) {
+            error_log(sprintf('Transfer draft save failed for user=%d: %s', $user['id'], $e->getMessage()));
             $result['errors'][] = 'TRANSFER_SAVE_FAILED';
         }
     } elseif (!$result['errors']) {
