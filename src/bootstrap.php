@@ -8,13 +8,17 @@ session_set_cookie_params([
     'samesite' => 'Lax',
     'secure' => isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
 ]);
+require_once __DIR__ . '/Database.php';
+if (getenv('SESSION_DRIVER') === 'database') {
+    require_once __DIR__ . '/DatabaseSessionHandler.php';
+    session_set_save_handler(new DatabaseSessionHandler(), true);
+}
 session_start();
 if (!isset($_SESSION['csrf'])) {
     $_SESSION['csrf'] = bin2hex(random_bytes(24));
 }
 
 require __DIR__ . '/Input.php';
-require_once __DIR__ . '/Database.php';
 require_once __DIR__ . '/InventoryGuard.php';
 require __DIR__ . '/Store.php';
 require __DIR__ . '/StockLedger.php';

@@ -113,6 +113,26 @@ bash app.sh run                   # chạy tại http://127.0.0.1:8110
 
 Đổi cổng bằng `PORT=8200 bash app.sh run`. Dừng máy chủ bằng `Ctrl+C`.
 
+### Deploy thử bằng Vercel và Supabase
+
+Nhánh thử nghiệm này dùng Docker/FrankenPHP trên Vercel và PostgreSQL của Supabase. Vercel chạy ứng dụng trong container; `Dockerfile` cài `pdo_pgsql` và Caddy phục vụ thư mục `public/`. PHP session được lưu ở bảng `app_sessions` khi bật driver database, để phiên đăng nhập dùng được giữa các instance.
+
+1. Tạo project PostgreSQL trên Supabase. Trong SQL Editor, chạy toàn bộ `database/schema.sql`, sau đó chạy `database/seed.sql` (bỏ dòng đầu `\set ON_ERROR_STOP on`, đây là lệnh dành cho `psql`). Dữ liệu seed là tài khoản demo, chỉ dùng để thử.
+2. Chạy `database/vercel-sessions.sql` trong SQL Editor để tạo bảng lưu session.
+3. Trong Supabase, mở **Connect** và lấy connection string **Transaction pooler**. Không đưa chuỗi này vào Git.
+4. Import repo vào Vercel và chọn branch `deploy/vercel-supabase-trial`. Vercel nhận `Dockerfile` ở thư mục gốc; đặt biến môi trường cho Preview:
+
+   | Tên | Giá trị |
+   | --- | --- |
+   | `DATABASE_URL` | URI transaction pooler từ Supabase, gồm user, mật khẩu đã URL-encode, host, port và database |
+   | `SESSION_DRIVER` | `database` |
+   | `PG_EMULATE_PREPARES` | `true` (transaction pooler không hỗ trợ prepared statements phía server) |
+
+   URI có thể có dạng `postgresql://postgres.<project-ref>:<password>@<pooler-host>:6543/postgres`; hãy dùng đúng URI Supabase cung cấp, không tự đoán pooler host.
+5. Deploy Preview và thử đăng nhập, mở trang kho, tạo phiếu demo, đăng xuất rồi đăng nhập lại. Khi cần cập nhật code, push commit lên branch này để Vercel tạo Preview mới.
+
+Có thể chạy app cục bộ như trước bằng `.local/db.json`; session mặc định vẫn là session file. Không đặt `DATABASE_URL` hoặc `SESSION_DRIVER=database` trên môi trường local nếu chưa tạo bảng session Supabase.
+
 ### Khởi tạo PostgreSQL
 
 Schema ban đầu nằm ở `database/schema.sql`. Trên Ubuntu/WSL, khởi động PostgreSQL rồi mở phiên quản trị:

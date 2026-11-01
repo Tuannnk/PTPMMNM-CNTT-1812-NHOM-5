@@ -1,0 +1,7 @@
+.git
+.local
+.vscode
+.idea
+tests
+tools
+*.log
