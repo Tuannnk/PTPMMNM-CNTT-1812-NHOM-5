@@ -8,6 +8,11 @@ session_set_cookie_params([
     'samesite' => 'Lax',
     'secure' => isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
 ]);
+require_once __DIR__ . '/Database.php';
+if (getenv('SESSION_DRIVER') === 'database') {
+    require_once __DIR__ . '/DatabaseSessionHandler.php';
+    session_set_save_handler(new DatabaseSessionHandler(), true);
+}
 session_start();
 if (!isset($_SESSION['csrf'])) {
     $_SESSION['csrf'] = bin2hex(random_bytes(24));
