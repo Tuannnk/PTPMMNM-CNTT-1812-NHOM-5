@@ -30,6 +30,7 @@ $data = [
     'to_warehouse_id' => null,
     'note' => '',
     'lines' => [],
+    'supplier_id' => null,
 ];
 $formLines = [['batch_id' => 0, 'qty' => '']];
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -82,6 +83,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $items = array_filter(Store::indexed('items'), fn($item) => $item['active']);
+$suppliers = array_values(array_filter(Store::all('suppliers'), fn($supplier) => $supplier['active']));
 $batches = array_values(array_filter(Store::all('batches'), fn($batch) => $batch['active'] && isset($items[$batch['item_id']])));
 $labels = ['in' => 'Lập phiếu nhập', 'out' => 'Lập phiếu xuất', 'transfer' => 'Điều chuyển giữa hai kho'];
 $title = $labels[$type];
@@ -148,6 +150,9 @@ require __DIR__ . '/../templates/header.php';
     <label class="form-field form-field--wide">Ghi chú
       <input name="note" maxlength="255" value="<?= e($data['note']) ?>" placeholder="Lý do, số hóa đơn, bộ phận nhận…">
     </label>
+    <?php if ($type === 'in'): ?><label class="form-field">Nhà cung cấp
+      <select name="supplier_id" required><option value="">— Chọn nhà cung cấp —</option><?php foreach ($suppliers as $supplier): ?><option value="<?= $supplier['id'] ?>" <?= (int)($data['supplier_id'] ?? 0) === $supplier['id'] ? 'selected' : '' ?>><?= e($supplier['code'].' · '.$supplier['company_name']) ?></option><?php endforeach; ?></select>
+    </label><?php endif; ?>
   </div>
 
   <h2>Dòng hàng</h2>

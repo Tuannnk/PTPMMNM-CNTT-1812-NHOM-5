@@ -12,9 +12,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = field($_POST, 'username');
     $password = $_POST['password'] ?? '';
     $password = is_string($password) ? $password : '';
-
-    $user = $username !== '' && $password !== '' ? authenticate($username, $password) : null;
+    $remoteAddress = is_string($_SERVER['REMOTE_ADDR'] ?? null) ? $_SERVER['REMOTE_ADDR'] : 'unknown';
+    try {
+        $retryAfter = LoginThrottle::begin($remoteAddress, $username);
+        $user = $retryAfter === 0 && $username !== '' && $password !== '' ? authenticate($username, $password) : null;
+    } catch (Throwable $error) {
+        error_log('Login throttle unavailable: ' . $error->getMessage());
+        $user = null;
+    }
     if ($user !== null) {
+        try {
+            LoginThrottle::clear($remoteAddress, $username);
+        } catch (Throwable $error) {
+            error_log('Could not clear login throttle state: ' . $error->getMessage());
+        }
         session_regenerate_id(true);
         $_SESSION['user_id'] = $user['id'];
         redirect('/');

@@ -16,6 +16,12 @@ $nav = [
         ['warehouses', '/warehouses.php', 'Kho'],
         ['items', '/items.php', 'Mặt hàng & lô'],
     ],
+    'Chuỗi cung ứng' => [
+        ['suppliers', '/suppliers.php', 'Nhà cung cấp'],
+        ['sales-points', '/sales-points.php', 'Điểm bán'],
+        ['sales-stock', '/sales-stock.php', 'Tồn điểm bán'],
+        ['sales-orders', '/sales-orders.php', 'Đơn phân phối'],
+    ],
 ];
 if ($user && canCreateVoucher($user)) {
     array_splice($nav['Chứng từ'], 1, 0, [

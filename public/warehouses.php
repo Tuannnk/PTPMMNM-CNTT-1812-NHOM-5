@@ -15,6 +15,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } catch (Throwable $e) { $error = $e instanceof InvalidArgumentException ? $e->getMessage() : 'Không lưu được. Mã kho có thể đã tồn tại.'; }
 }
 $movements = Store::all('stock_movements'); $users = Store::all('users'); $warehouses = Store::all('warehouses');
+if (!$manage) {
+    $warehouses = array_values(array_filter($warehouses, fn($warehouse) => canAccessWarehouse($user, $warehouse['id'])));
+}
 $q = field($_GET, 'q');
 if ($q !== '') $warehouses = array_filter($warehouses, fn($w) => stripos($w['code'].' '.$w['name'].' '.$w['address'], $q) !== false);
 $editing = isset($_GET['edit']) ? Store::find('warehouses', intField($_GET,'edit') ?? 0) : null;

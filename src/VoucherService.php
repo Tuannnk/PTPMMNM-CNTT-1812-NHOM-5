@@ -6,6 +6,9 @@ final class VoucherService
     /** Lưu phiếu nháp và các dòng hàng. Khóa yêu cầu ngăn double-submit tạo phiếu trùng. */
     public static function createDraft(array $user, array $data, string $requestKey): int
     {
+        if ($data['type'] === 'in' && (!isset($data['supplier_id']) || (int)$data['supplier_id'] <= 0)) {
+            throw new DomainException('SUPPLIER_REQUIRED');
+        }
         $db = Database::connection();
         $db->beginTransaction();
         try {
@@ -13,8 +16,8 @@ final class VoucherService
             $prefix = ['in' => 'PN', 'out' => 'PX', 'transfer' => 'PC'][$data['type']];
             $code = sprintf('%s-%06d', $prefix, $id);
             $insert = $db->prepare(
-            'INSERT INTO vouchers (id,code,type,status,warehouse_id,to_warehouse_id,created_by,note,request_key) '
-                . 'VALUES (:id,:code,:type,\'draft\',:warehouse,:to_warehouse,:user,:note,:request_key) '
+            'INSERT INTO vouchers (id,code,type,status,warehouse_id,to_warehouse_id,supplier_id,created_by,note,request_key) '
+                . 'VALUES (:id,:code,:type,\'draft\',:warehouse,:to_warehouse,:supplier,:user,:note,:request_key) '
                 . 'ON CONFLICT DO NOTHING RETURNING id'
             );
             $insert->execute([
@@ -23,6 +26,7 @@ final class VoucherService
                 'type' => $data['type'],
                 'warehouse' => $data['warehouse_id'],
                 'to_warehouse' => $data['to_warehouse_id'],
+                'supplier' => $data['supplier_id'] ?? null,
                 'user' => $user['id'],
                 'note' => $data['note'],
                 'request_key' => $requestKey,

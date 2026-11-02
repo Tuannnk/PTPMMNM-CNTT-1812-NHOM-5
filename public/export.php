@@ -20,22 +20,18 @@ if (field($_GET, 'report') === 'history') {
     if (!HistoryReport::validDate($from)) $from = '';
     if (!HistoryReport::validDate($to)) $to = '';
     if ($from !== '' && $to !== '' && $from > $to) [$from, $to] = [$to, $from];
-    $report = HistoryReport::build(['item_id'=>$itemId,'warehouse_id'=>$warehouseId,'batch_id'=>$batchId,
-        'type'=>$type,'from'=>$from,'to'=>$to], $scope);
-    $items = Store::indexed('items'); $batches = Store::indexed('batches'); $vouchers = Store::indexed('vouchers');
+    $filters=['item_id'=>$itemId,'warehouse_id'=>$warehouseId,'batch_id'=>$batchId,
+        'type'=>$type,'from'=>$from,'to'=>$to];
+    $items = Store::indexed('items'); $batches = Store::indexed('batches');
     header('Content-Type: text/csv; charset=utf-8');
     header('Content-Disposition: attachment; filename="lich-su-kho-' . date('Ymd') . '.csv"');
     $out = fopen('php://output', 'w'); fwrite($out, "\xEF\xBB\xBF");
-    $csvText = static function ($value): string {
-        $value = (string)$value;
-        return preg_match('/^[\s]*[=+@\-]/u', $value) ? "'" . $value : $value;
-    };
     fputcsv($out, ['Thời điểm','Mã chứng từ','Loại','Kho','Mã mặt hàng','Mặt hàng','Lô','Phát sinh','Lũy kế kho/lô'], ',', '"', '');
-    foreach ($report['rows'] as $m) {
-        $v = $vouchers[$m['voucher_id']]; $item = $items[$m['item_id']];
-        fputcsv($out, [dateOnly($m['at']),$csvText($v['code']),$csvText(VOUCHER_TYPES[$v['type']] ?? $v['type']),
-            $csvText(warehouseName($m['warehouse_id'])),$csvText($item['sku']),$csvText($item['name']),
-            $csvText($batches[$m['batch_id']]['code']),$m['qty'],$m['running']], ',', '"', '');
+    foreach (HistoryReport::rows($filters, $scope, null) as $m) {
+        $item = $items[$m['item_id']];
+        fputcsv($out, [dateOnly($m['at']),csvText($m['voucher_code']),csvText(VOUCHER_TYPES[$m['voucher_type']] ?? $m['voucher_type']),
+            csvText(warehouseName($m['warehouse_id'])),csvText($item['sku']),csvText($item['name']),
+            csvText($batches[$m['batch_id']]['code']),$m['qty'],$m['running']], ',', '"', '');
     }
     fclose($out); exit;
 }
@@ -43,24 +39,30 @@ if (field($_GET, 'report') === 'history') {
 $allowed = allowedWarehouses($user);
 $q = field($_GET, 'q');
 $lowOnly = field($_GET, 'low') === '1';
-$movements = Store::all('stock_movements');
-$csvText = static function ($value): string {
-    $value = (string)$value;
-    return preg_match('/^[\s]*[=+@\-]/u', $value) ? "'" . $value : $value;
-};
-
+$perWarehouse = [];
+foreach ($allowed as $warehouse) $perWarehouse[$warehouse['id']] = [];
+if ($allowed) {
+    $placeholders=[]; $params=[];
+    foreach ($allowed as $index=>$warehouse) {
+        $key='warehouse_'.$index; $placeholders[]=':'.$key; $params[$key]=$warehouse['id'];
+    }
+    $balances=Database::connection()->prepare('SELECT warehouse_id,item_id,COALESCE(SUM(qty),0) AS balance FROM stock_movements WHERE warehouse_id IN ('.implode(',',$placeholders).') GROUP BY warehouse_id,item_id');
+    $balances->execute($params);
+    foreach ($balances->fetchAll() as $balance) {
+        $perWarehouse[(int)$balance['warehouse_id']][(int)$balance['item_id']]=(int)$balance['balance'];
+    }
+}
 header('Content-Type: text/csv; charset=utf-8');
 header('Content-Disposition: attachment; filename="ton-kho-' . date('Ymd') . '.csv"');
 $out = fopen('php://output', 'w');
 fwrite($out, "\xEF\xBB\xBF"); // BOM để Excel đọc đúng tiếng Việt
-fputcsv($out, array_merge(['Mã', 'Mặt hàng', 'ĐVT'], array_map($csvText, array_column($allowed, 'code')), ['Tổng', 'Tối thiểu']), ',', '"', '');
-$perWarehouse = array_map(fn($w) => StockLedger::byItem($movements, $w['id']), $allowed);
+fputcsv($out, array_merge(['Mã', 'Mặt hàng', 'ĐVT'], array_map('csvText', array_column($allowed, 'code')), ['Tổng', 'Tối thiểu']), ',', '"', '');
 foreach (Store::all('items') as $item) {
     $cells = array_map(fn($byItem) => $byItem[$item['id']] ?? 0, $perWarehouse);
     $total = array_sum($cells);
     if (($q !== '' && stripos($item['sku'] . ' ' . $item['name'], $q) === false) || ($lowOnly && $total >= $item['min_stock'])) {
         continue;
     }
-    fputcsv($out, array_merge([$csvText($item['sku']), $csvText($item['name']), $csvText($item['unit_name'])], $cells, [$total, $item['min_stock']]), ',', '"', '');
+    fputcsv($out, array_merge([csvText($item['sku']), csvText($item['name']), csvText($item['unit_name'])], $cells, [$total, $item['min_stock']]), ',', '"', '');
 }
 fclose($out);
