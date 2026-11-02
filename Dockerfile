@@ -12,5 +12,6 @@ COPY src ./src
 COPY templates ./templates
 
 ENV PORT=80
+ENV LOGIN_THROTTLE_FILE=/tmp/login-throttle.json
 
 CMD ["frankenphp", "run", "--config", "/etc/caddy/Caddyfile"]

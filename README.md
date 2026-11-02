@@ -119,25 +119,58 @@ bash app.sh run                   # chạy tại http://127.0.0.1:8110
 
 Đổi cổng bằng `PORT=8200 bash app.sh run`. Dừng máy chủ bằng `Ctrl+C`.
 
-### Deploy thử bằng Vercel và Supabase
+### Deploy phiên bản mới nhất của `main` lên Vercel và Supabase
 
-Nhánh thử nghiệm này dùng Docker/FrankenPHP trên Vercel và PostgreSQL của Supabase. Vercel chạy ứng dụng trong container; `Dockerfile` cài `pdo_pgsql` và Caddy phục vụ thư mục `public/`. PHP session được lưu ở bảng `app_sessions` khi bật driver database, để phiên đăng nhập dùng được giữa các instance.
+`main` hiện đã có cấu hình Docker/FrankenPHP cho Vercel và driver lưu PHP session trong PostgreSQL. Hãy deploy bằng Dockerfile ở thư mục gốc, không chọn `public/` làm Root Directory.
 
-1. Tạo project PostgreSQL trên Supabase. Trong SQL Editor, chạy toàn bộ `database/schema.sql`, sau đó chạy `database/seed.sql` (bỏ dòng đầu `\set ON_ERROR_STOP on`, đây là lệnh dành cho `psql`). Dữ liệu seed là tài khoản demo, chỉ dùng để thử.
-2. Chạy `database/vercel-sessions.sql` trong SQL Editor để tạo bảng lưu session.
-3. Trong Supabase, mở **Connect** và lấy connection string **Transaction pooler**. Không đưa chuỗi này vào Git.
-4. Import repo vào Vercel và chọn branch `deploy/vercel-supabase-trial`. Vercel nhận `Dockerfile` ở thư mục gốc; đặt biến môi trường cho Preview:
+#### 1. Cập nhật Supabase
+
+Nếu đang dùng Supabase từ lần deploy thử, giữ nguyên dữ liệu và chạy migration trước khi chuyển Vercel sang `main`:
+
+1. Sao lưu database trước khi nâng cấp.
+2. Nếu database từ lần deploy thử **chưa có** các bảng `suppliers`, `sales_points` và `sales_orders`, chạy `database/schema.sql`, rồi chạy migration ở bước kế tiếp. Schema hiện tại đã có cột `stock_counts.closed_at`.
+3. Chạy `database/migrations/001_supply_chain.sql` bằng `psql` từ thư mục gốc dự án. Đây là entrypoint dùng lệnh `\ir`, vì vậy không chạy file này trong Supabase SQL Editor. Khi được hỏi, nhập mật khẩu database Supabase. Migration tạo kho tổng `CENTRAL-01` và chuyển ba kho hiện tại thành kho khu vực; hãy xác nhận thay đổi này phù hợp với dữ liệu của bạn.
+4. Nếu database đã có các bảng chuỗi cung ứng và đã chạy migration này, bỏ qua bước 2 và 3. Chỉ chạy `database/vercel-sessions.sql` để bảo đảm bảng lưu session tồn tại.
+
+Ví dụ cho database cũ chưa có chuỗi cung ứng: dùng host/user/port của **Session pooler** trong nút **Connect** của Supabase (port thường là `5432`), rồi chạy hai lệnh này:
+
+```bash
+psql "host=<POOLER_HOST> port=5432 dbname=postgres user=postgres.<PROJECT_REF> sslmode=require" \
+  -v ON_ERROR_STOP=1 -f database/schema.sql
+psql "host=<POOLER_HOST> port=5432 dbname=postgres user=postgres.<PROJECT_REF> sslmode=require" \
+  -v ON_ERROR_STOP=1 -f database/migrations/001_supply_chain.sql
+```
+
+Với database đã có các bảng chuỗi cung ứng, bỏ qua hai lệnh trên. Trong cả hai trường hợp, bảo đảm bảng session tồn tại:
+
+```bash
+psql "host=<POOLER_HOST> port=5432 dbname=postgres user=postgres.<PROJECT_REF> sslmode=require" \
+  -v ON_ERROR_STOP=1 -f database/vercel-sessions.sql
+```
+
+Thay `<POOLER_HOST>` và `<PROJECT_REF>` bằng giá trị Supabase cung cấp. Không ghi mật khẩu vào lệnh; `psql` sẽ hỏi mật khẩu. Chỉ chạy lệnh schema khi database chưa được nâng cấp lên chuỗi cung ứng; migration `001` chỉ chạy khi các bảng chuỗi cung ứng chưa tồn tại.
+
+Nếu tạo database demo mới, nạp thêm `database/seed.sql` trước migration. `database/seed-supply-chain-demo.sql` là tùy chọn cho demo và yêu cầu chạy với `-v demo_seed=1`; không nạp các tài khoản/mật khẩu mẫu lên môi trường production.
+
+#### 2. Cấu hình Vercel cho `main`
+
+Trong Vercel, mở project đã dùng cho branch thử nghiệm:
+
+1. Vào **Settings → Git** và đặt **Production Branch** là `main`.
+2. Trong **Settings → Environment Variables**, thêm các biến dưới đây cho **Production** (và Preview nếu muốn thử trước khi phát hành):
 
    | Tên | Giá trị |
    | --- | --- |
-   | `DATABASE_URL` | URI transaction pooler từ Supabase, gồm user, mật khẩu đã URL-encode, host, port và database |
+   | `DATABASE_URL` | URI **Transaction pooler** do Supabase cung cấp, thường dùng port `6543` |
    | `SESSION_DRIVER` | `database` |
-   | `PG_EMULATE_PREPARES` | `true` (transaction pooler không hỗ trợ prepared statements phía server) |
+   | `PG_EMULATE_PREPARES` | `true` |
 
-   URI có thể có dạng `postgresql://postgres.<project-ref>:<password>@<pooler-host>:6543/postgres`; hãy dùng đúng URI Supabase cung cấp, không tự đoán pooler host.
-5. Deploy Preview và thử đăng nhập, mở trang kho, tạo phiếu demo, đăng xuất rồi đăng nhập lại. Khi cần cập nhật code, push commit lên branch này để Vercel tạo Preview mới.
+   Dùng nguyên URI từ Supabase, ví dụ dạng `postgresql://postgres.<project-ref>:<password>@<pooler-host>:6543/postgres`; ký tự đặc biệt trong mật khẩu cần được URL-encode. Không lưu URI hoặc mật khẩu vào Git.
+3. Commit và push các thay đổi cần phát hành lên `main`. Vercel sẽ tạo deployment Production từ `main`; nếu không tự chạy, chọn **Deployments → Redeploy** và kiểm tra commit/branch nguồn là `main`.
 
-Có thể chạy app cục bộ như trước bằng `.local/db.json`; session mặc định vẫn là session file. Không đặt `DATABASE_URL` hoặc `SESSION_DRIVER=database` trên môi trường local nếu chưa tạo bảng session Supabase.
+Thử đăng nhập, mở trang kho, lịch sử, nhà cung cấp và đơn phân phối; đăng xuất rồi đăng nhập lại để kiểm tra session được lưu ở Supabase. File giới hạn đăng nhập được đặt ở `/tmp/login-throttle.json` trong container để không ghi vào filesystem ứng dụng. File `/tmp` chỉ tồn tại theo instance Vercel, nên giới hạn đăng nhập phù hợp cho deploy thử; trước khi mở công khai cần dùng kho lưu trữ dùng chung nếu cần giới hạn nhất quán giữa nhiều instance.
+
+Khi quay lại chạy local, ứng dụng vẫn đọc `.local/db.json` và dùng session file theo mặc định. `LOGIN_THROTTLE_FILE` chỉ cần đặt nếu muốn đổi vị trí file giới hạn đăng nhập.
 
 ### Khởi tạo PostgreSQL
 
@@ -179,6 +212,12 @@ Sau khi chạy các lệnh trên, database và schema sẽ sẵn sàng. Khi nân
 
 ```bash
 psql -h 127.0.0.1 -U ptpmmnm_cntt_1812_nhom_5 -d ptpmmnm_cntt_1812_nhom_5 -f database/migrations/001_supply_chain.sql
+```
+
+Nếu trang lịch sử báo thiếu cột `stock_counts.closed_at`, cập nhật database hiện tại bằng migration:
+
+```bash
+psql -h 127.0.0.1 -U ptpmmnm_cntt_1812_nhom_5 -d ptpmmnm_cntt_1812_nhom_5 -f database/migrations/002_stock_count_closed_at.sql
 ```
 
 Migration tạo kho tổng `CENTRAL-01`, chuyển ba kho cũ thành `REGIONAL` trực thuộc kho tổng, tạo nhà cung cấp, điểm bán, đơn/giao phân phối và mở rộng sổ phát sinh. Migration không di chuyển tồn, không nạp dữ liệu mẫu và có thể chạy lặp lại. Hãy backup và kiểm tra preflight trước khi chạy trên database có dữ liệu thật.
