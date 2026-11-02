@@ -51,12 +51,15 @@ final class LoginThrottle
 
     private static function updateStore(callable $callback): mixed
     {
-        $directory = __DIR__ . '/../.local';
+        $path = getenv('LOGIN_THROTTLE_FILE');
+        if (!is_string($path) || $path === '') {
+            $path = __DIR__ . '/../.local/login-throttle.json';
+        }
+        $directory = dirname($path);
         if (!is_dir($directory) && !mkdir($directory, 0700, true) && !is_dir($directory)) {
             throw new RuntimeException('LOGIN_THROTTLE_STORAGE_UNAVAILABLE');
         }
         @chmod($directory, 0700);
-        $path = $directory . '/login-throttle.json';
         $handle = fopen($path, 'c+');
         if ($handle === false) throw new RuntimeException('LOGIN_THROTTLE_STORAGE_UNAVAILABLE');
         @chmod($path, 0600);
