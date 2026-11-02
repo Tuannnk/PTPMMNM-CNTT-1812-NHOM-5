@@ -22,12 +22,12 @@ if (!HistoryReport::validDate($to)) $to = '';
 if ($from !== '' && $to !== '' && $from > $to) [$from, $to] = [$to, $from];
 if (!isset(VOUCHER_TYPES[$type])) $type = '';
 $filters = compact('itemId', 'warehouseId', 'batchId', 'type', 'from', 'to');
+$page = intField($_GET, 'page') ?? 1;
 $report = HistoryReport::build(['item_id'=>$itemId, 'warehouse_id'=>$warehouseId, 'batch_id'=>$batchId,
-    'type'=>$type, 'from'=>$from, 'to'=>$to], $scope);
+    'type'=>$type, 'from'=>$from, 'to'=>$to], $scope, $page);
 $rows = $report['rows'];
 $items = Store::indexed('items');
 $batches = Store::indexed('batches');
-$vouchers = Store::indexed('vouchers');
 $title = 'Lịch sử phát sinh';
 $active = 'history';
 require __DIR__ . '/../templates/header.php';
@@ -57,14 +57,20 @@ require __DIR__ . '/../templates/header.php';
   <div><span>Tổng trị tuyệt đối phần lệch</span><strong><?= qty($report['reconciliation']['absolute_difference']) ?></strong></div>
 </section>
 <p class="muted">Đối chiếu lấy số thực tế ở đợt kiểm kê đã chốt gần nhất cho từng kho/lô, cộng các phát sinh sau thời điểm chốt rồi so với sổ.</p>
-<p class="result-count"><?= count($rows) ?> dòng phát sinh</p>
+<p class="result-count"><?= $report['total_rows'] ?> dòng phát sinh · trang <?= $report['page'] ?> / <?= $report['total_pages'] ?></p>
 <div class="table-wrap"><table class="table">
   <thead><tr><th>Thời điểm</th><th>Chứng từ</th><th>Kho</th><th>Mặt hàng</th><th>Lô</th><th class="num">Phát sinh</th><th class="num">Lũy kế kho/lô</th></tr></thead>
-  <tbody><?php foreach ($rows as $m): $v=$vouchers[$m['voucher_id']]; ?><tr>
-    <td><?= e(dateOnly($m['at'])) ?></td><td><a href="/voucher.php?id=<?= $v['id'] ?>"><?= e($v['code']) ?></a> <?= typeBadge($v['type']) ?></td>
+  <tbody><?php foreach ($rows as $m): ?><tr>
+    <td><?= e(dateOnly($m['at'])) ?></td><td><a href="/voucher.php?id=<?= $m['voucher_id'] ?>"><?= e($m['voucher_code']) ?></a> <?= typeBadge($m['voucher_type']) ?></td>
     <td><?= e(warehouseName($m['warehouse_id'])) ?></td><td><?= e($items[$m['item_id']]['name']) ?></td><td><?= e($batches[$m['batch_id']]['code']) ?></td>
     <td class="num"><?= signedQty($m['qty']) ?></td><td class="num"><?= qty($m['running']) ?></td>
   </tr><?php endforeach; ?></tbody>
 </table></div>
 <?php if (!$rows): ?><p class="empty">Không có phát sinh phù hợp bộ lọc.</p><?php endif; ?>
+<?php if ($report['total_pages'] > 1): $pageQuery=['item_id'=>$itemId,'warehouse_id'=>$warehouseId,'batch_id'=>$batchId,'type'=>$type,'from'=>$from,'to'=>$to]; ?>
+<nav class="actions" aria-label="Phân trang lịch sử">
+  <?php if ($page > 1): ?><a class="button button--ghost" href="/history.php?<?= e(http_build_query($pageQuery + ['page'=>$page-1])) ?>">Trang trước</a><?php endif; ?>
+  <?php if ($page < $report['total_pages']): ?><a class="button button--ghost" href="/history.php?<?= e(http_build_query($pageQuery + ['page'=>$page+1])) ?>">Trang sau</a><?php endif; ?>
+</nav>
+<?php endif; ?>
 <?php require __DIR__ . '/../templates/footer.php'; ?>

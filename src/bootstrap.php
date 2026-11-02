@@ -15,6 +15,7 @@ if (!isset($_SESSION['csrf'])) {
 
 require __DIR__ . '/Input.php';
 require_once __DIR__ . '/Database.php';
+require_once __DIR__ . '/LoginThrottle.php';
 require_once __DIR__ . '/InventoryGuard.php';
 require __DIR__ . '/Store.php';
 require __DIR__ . '/StockLedger.php';
@@ -24,6 +25,9 @@ require __DIR__ . '/VoucherService.php';
 require __DIR__ . '/TransferService.php';
 require __DIR__ . '/AdjustmentService.php';
 require __DIR__ . '/StockCountService.php';
+require __DIR__ . '/SupplierService.php';
+require __DIR__ . '/SalesPointService.php';
+require __DIR__ . '/SalesOrderService.php';
 
 const VOUCHER_TYPES = [
     'in' => 'Phiếu nhập',
