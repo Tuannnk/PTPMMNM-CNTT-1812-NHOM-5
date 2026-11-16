@@ -73,7 +73,12 @@ require __DIR__ . '/../templates/header.php';
         <input id="username" name="username" type="text" autocomplete="username" required maxlength="80" value="<?= e($username) ?>" autofocus>
 
         <label for="password">Mật khẩu</label>
-        <input id="password" name="password" type="password" autocomplete="current-password" required>
+        <span class="password-input-wrap">
+          <input id="password" name="password" type="password" autocomplete="current-password" required>
+          <button class="password-toggle" type="button" data-password-toggle aria-label="Hiện mật khẩu" aria-pressed="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/><path class="password-eye-slash" d="m4 4 16 16"/></svg>
+          </button>
+        </span>
 
         <button class="button login-submit" type="submit">Đăng nhập <span aria-hidden="true">→</span></button>
       </form>

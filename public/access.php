@@ -70,6 +70,131 @@ $title='Tài khoản & phân quyền'; $active='access'; require __DIR__.'/../te
 ?>
 <header class="page-head"><div><h1>Tài khoản &amp; phân quyền</h1><p>Gán vai trò và phạm vi kho. Chỉ quản trị viên được thay đổi quyền.</p></div></header>
 <?php if($error): ?><div class="error-summary" role="alert"><?= e($error) ?></div><?php endif; ?>
-<section class="card"><h2><?= $editing?'Sửa tài khoản':'Tạo tài khoản' ?></h2><form method="post" class="form"><?= csrfInput() ?><input type="hidden" name="id" value="<?= $editing['id']??'' ?>"><div class="form-row"><label class="form-field">Tên đăng nhập<input name="username" required maxlength="80" value="<?= e($editing['username']??'') ?>"></label><label class="form-field">Họ tên<input name="full_name" required maxlength="160" value="<?= e($editing['name']??'') ?>"></label><label class="form-field">Vai trò<select name="role"><?php foreach(ROLE_LABELS as $key=>$label): ?><option value="<?= e($key) ?>" <?= ($editing['role']??'staff')===$key?'selected':'' ?>><?= e($label) ?></option><?php endforeach; ?></select></label><label class="form-field">Mật khẩu <?= $editing?'(để trống nếu không đổi)':'' ?><input type="password" name="password" <?= $editing?'':'required' ?> minlength="10" autocomplete="new-password"></label><label><input type="checkbox" name="active" <?= !isset($editing['active'])||$editing['active']?'checked':'' ?>> Đang hoạt động</label></div><fieldset><legend>Kho được phép thao tác (tài khoản nội bộ)</legend><?php foreach($warehouses as $w): ?><label class="chip"><input type="checkbox" name="warehouse_id[]" value="<?= $w['id'] ?>" <?= in_array($w['id'],$editing['warehouses']??[],true)?'checked':'' ?>> <?= e($w['name']) ?></label><?php endforeach; ?></fieldset><fieldset><legend>Điểm bán được phép thao tác (người dùng điểm bán)</legend><?php foreach($salesPoints as $point): ?><label class="chip"><input type="checkbox" name="sales_point_id[]" value="<?= $point['id'] ?>" <?= in_array($point['id'],$editing['sales_points']??[],true)?'checked':'' ?>> <?= e($point['code'].' · '.$point['name']) ?></label><?php endforeach; ?></fieldset><button class="button">Lưu tài khoản</button></form></section>
-<section class="card"><h2>Tài khoản hiện có</h2><div class="table-wrap"><table class="table"><thead><tr><th>Tên đăng nhập</th><th>Họ tên</th><th>Vai trò</th><th>Phạm vi</th><th>Trạng thái</th><th></th></tr></thead><tbody><?php foreach($accounts as $account): $scopeNames=$account['role']==='sales_user'?array_map(fn($pointId)=>$salesPointsById[$pointId]['name']??'—',$account['sales_points']??[]):array_map(fn($warehouseId)=>warehouseName($warehouseId),$account['warehouses']); ?><tr><td><?= e($account['username']) ?></td><td><?= e($account['name']) ?></td><td><?= e(ROLE_LABELS[$account['role']]) ?></td><td><?= e(implode(', ',$scopeNames)) ?></td><td><?= $account['active']?'Đang hoạt động':'Đã khóa' ?></td><td><a class="text-link" href="/access.php?edit=<?= $account['id'] ?>">Sửa</a></td></tr><?php endforeach; ?></tbody></table></div></section>
+<section class="card">
+  <h2><?= $editing ? 'Sửa tài khoản' : 'Tạo tài khoản' ?></h2>
+  <form method="post" class="form">
+    <?= csrfInput() ?>
+    <input type="hidden" name="id" value="<?= $editing['id'] ?? '' ?>">
+
+    <div class="form-row">
+      <label class="form-field">
+        Tên đăng nhập
+        <input name="username" required maxlength="80" value="<?= e($editing['username'] ?? '') ?>">
+      </label>
+
+      <label class="form-field">
+        Họ tên
+        <input name="full_name" required maxlength="160" value="<?= e($editing['name'] ?? '') ?>">
+      </label>
+
+      <label class="form-field">
+        Vai trò
+        <select name="role">
+          <?php foreach (ROLE_LABELS as $key => $label): ?>
+            <option value="<?= e($key) ?>" <?= ($editing['role'] ?? 'staff') === $key ? 'selected' : '' ?>>
+              <?= e($label) ?>
+            </option>
+          <?php endforeach; ?>
+        </select>
+      </label>
+
+      <label class="form-field">
+        Mật khẩu <?= $editing ? '(để trống nếu không đổi)' : '' ?>
+        <span class="password-input-wrap">
+          <input
+            type="password"
+            name="password"
+            <?= $editing ? '' : 'required' ?>
+            minlength="10"
+            autocomplete="new-password"
+          >
+          <button
+            class="password-toggle"
+            type="button"
+            data-password-toggle
+            aria-label="Hiện mật khẩu"
+            aria-pressed="false"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/>
+              <circle cx="12" cy="12" r="3"/>
+              <path class="password-eye-slash" d="m4 4 16 16"/>
+            </svg>
+          </button>
+        </span>
+      </label>
+
+      <label>
+        <input type="checkbox" name="active" <?= !isset($editing['active']) || $editing['active'] ? 'checked' : '' ?>>
+        Đang hoạt động
+      </label>
+    </div>
+
+    <fieldset>
+      <legend>Kho được phép thao tác (tài khoản nội bộ)</legend>
+      <?php foreach ($warehouses as $w): ?>
+        <label class="chip">
+          <input
+            type="checkbox"
+            name="warehouse_id[]"
+            value="<?= $w['id'] ?>"
+            <?= in_array($w['id'], $editing['warehouses'] ?? [], true) ? 'checked' : '' ?>
+          >
+          <?= e($w['name']) ?>
+        </label>
+      <?php endforeach; ?>
+    </fieldset>
+
+    <fieldset>
+      <legend>Điểm bán được phép thao tác (người dùng điểm bán)</legend>
+      <?php foreach ($salesPoints as $point): ?>
+        <label class="chip">
+          <input
+            type="checkbox"
+            name="sales_point_id[]"
+            value="<?= $point['id'] ?>"
+            <?= in_array($point['id'], $editing['sales_points'] ?? [], true) ? 'checked' : '' ?>
+          >
+          <?= e($point['code'].' · '.$point['name']) ?>
+        </label>
+      <?php endforeach; ?>
+    </fieldset>
+
+    <button class="button">Lưu tài khoản</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Tài khoản hiện có</h2>
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Tên đăng nhập</th>
+          <th>Họ tên</th>
+          <th>Vai trò</th>
+          <th>Phạm vi</th>
+          <th>Trạng thái</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <?php foreach ($accounts as $account):
+          $scopeNames = $account['role'] === 'sales_user'
+            ? array_map(fn($pointId) => $salesPointsById[$pointId]['name'] ?? '—', $account['sales_points'] ?? [])
+            : array_map(fn($warehouseId) => warehouseName($warehouseId), $account['warehouses']);
+        ?>
+          <tr>
+            <td><?= e($account['username']) ?></td>
+            <td><?= e($account['name']) ?></td>
+            <td><?= e(ROLE_LABELS[$account['role']]) ?></td>
+            <td><?= e(implode(', ', $scopeNames)) ?></td>
+            <td><?= $account['active'] ? 'Đang hoạt động' : 'Đã khóa' ?></td>
+            <td><a class="text-link" href="/access.php?edit=<?= $account['id'] ?>">Sửa</a></td>
+          </tr>
+        <?php endforeach; ?>
+      </tbody>
+    </table>
+  </div>
+</section>
 <?php require __DIR__.'/../templates/footer.php'; ?>
