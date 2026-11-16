@@ -290,6 +290,15 @@ legend { padding: 0 .35rem; color: var(--muted); font-size: .75rem; font-weight:
 .login-form { display: flex; flex-direction: column; }
 .login-form label { margin: 0 0 .42rem; font-size: .8rem; font-weight: 680; }
 .login-form input { width: 100%; min-height: 47px; margin-bottom: 1.15rem; padding: .65rem .8rem; }
+.password-input-wrap { position: relative; display: block; width: 100%; }
+.password-input-wrap input { width: 100%; padding-right: 2.9rem; }
+.login-form .password-input-wrap { margin-bottom: 1.15rem; }
+.login-form .password-input-wrap input { margin-bottom: 0; }
+.password-toggle { position: absolute; top: 50%; right: .55rem; display: grid; width: 32px; height: 32px; place-items: center; padding: 0; transform: translateY(-50%); border: 0; border-radius: 7px; background: transparent; color: var(--muted); cursor: pointer; }
+.password-toggle:hover { background: var(--surface-2); color: var(--text); }
+.password-toggle svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.password-toggle[aria-pressed="true"] .password-eye-slash { display: none; }
+.password-toggle:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
 .login-submit { width: 100%; min-height: 47px; justify-content: space-between; margin-top: .25rem; padding-inline: 1rem; }
 .login-submit span { font-size: 1.1rem; }
 .login-error { margin: -.1rem 0 1rem; padding: .65rem .8rem; font-size: .8rem; }

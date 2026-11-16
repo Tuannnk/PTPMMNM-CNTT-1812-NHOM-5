@@ -92,7 +92,7 @@ $message = flash();
     </div>
     <form class="user-actions" method="post" action="/logout.php">
       <?= csrfInput() ?>
-      <button class="link-button" aria-label="Đổi tài khoản" title="Đổi tài khoản"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 20v-1.5a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4V20M9.5 10.5a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM16 11h5m-2.5-2.5L21 11l-2.5 2.5"/></svg><span>Đổi tài khoản</span></button>
+      <button class="link-button" aria-label="Đăng xuất" title="Đăng xuất"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17l5-5-5-5M15 12H3M12 3h5a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5"/></svg><span>Đăng xuất</span></button>
     </form>
   </div>
 </aside>
