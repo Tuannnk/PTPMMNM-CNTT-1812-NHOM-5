@@ -58,7 +58,8 @@ CREATE TABLE IF NOT EXISTS batches (
 
 -- Nâng cấp an toàn cho database đã được khởi tạo bằng phiên bản schema trước.
 ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
-ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('staff', 'approver', 'counter', 'admin'));
+ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN
+    ('staff','approver','counter','admin','central_manager','regional_manager','sales_user'));
 ALTER TABLE batches ADD COLUMN IF NOT EXISTS active boolean NOT NULL DEFAULT true;
 INSERT INTO units (code, name)
 SELECT DISTINCT unit, unit FROM items
@@ -220,6 +221,8 @@ CREATE INDEX IF NOT EXISTS idx_voucher_lines_voucher
     ON voucher_lines (voucher_id);
 CREATE INDEX IF NOT EXISTS idx_movements_stock_lookup
     ON stock_movements (warehouse_id, item_id, batch_id, occurred_at);
+CREATE INDEX IF NOT EXISTS idx_movements_history_lookup
+    ON stock_movements (warehouse_id, batch_id, occurred_at, id);
 CREATE INDEX IF NOT EXISTS idx_movements_voucher
     ON stock_movements (voucher_id);
 CREATE INDEX IF NOT EXISTS idx_counts_warehouse_status

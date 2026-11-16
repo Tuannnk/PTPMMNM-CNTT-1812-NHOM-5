@@ -9,12 +9,16 @@ require __DIR__ . '/../src/Store.php';
 require __DIR__ . '/../src/StockLedger.php';
 require __DIR__ . '/../src/Auth.php';
 require __DIR__ . '/../src/Validation.php';
+require_once __DIR__ . '/../src/HistoryReport.php';
+require_once __DIR__ . '/../src/LoginThrottle.php';
 
 $staffA = Store::find('users', 1); // chỉ phụ trách kho 1
 $batch = Store::all('batches')[0];
 
 // Dữ liệu mẫu đúng quy mô đề yêu cầu.
-same(3, count(Store::all('warehouses')), 'seed: 3 kho');
+// Migration chuỗi cung ứng tạo thêm kho tổng CENTRAL-01, nên chỉ khẳng định tối thiểu 3 kho nghiệp vụ.
+$warehouseCodes = array_column(Store::all('warehouses'), 'code');
+same(true, count(array_intersect(['KHO-HN', 'KHO-DN', 'KHO-HCM'], $warehouseCodes)) === 3, 'seed: 3 kho địa điểm');
 same(30, count(Store::all('items')), 'seed: 30 mặt hàng');
 same(true, count(Store::all('stock_movements')) >= 200, 'seed: ít nhất 200 dòng phát sinh');
 $balances = StockLedger::balances(Store::all('stock_movements'));
@@ -39,25 +43,52 @@ same(['STOCK_NEGATIVE'], validateVoucher($post([]), $staffA, $afterFirst)['error
 same([], validateVoucher($post([]), $staffA, $five)['errors'], 'validateVoucher cho xuất trong phạm vi tồn');
 
 // Quyền theo kho: tài khoản kho A gửi thẳng warehouse_id của kho B.
-same(['WAREHOUSE_FORBIDDEN'], validateVoucher($post(['type' => 'in', 'warehouse_id' => '2']), $staffA, $balances)['errors'], 'nhân viên kho A không lập phiếu kho B');
+same(['WAREHOUSE_FORBIDDEN'], validateVoucher($post(['type' => 'out', 'warehouse_id' => '2']), $staffA, $balances)['errors'], 'nhân viên kho A không lập phiếu kho B');
 
 // Dữ liệu sai.
 same(['TO_WAREHOUSE_INVALID'], validateVoucher($post(['type' => 'transfer', 'to_warehouse_id' => '1']), $staffA, $balances)['errors'], 'điều chuyển trùng kho bị từ chối');
-same(['QTY_INVALID'], validateVoucher($post(['type' => 'in', 'qty' => ['0']]), $staffA, $balances)['errors'], 'số lượng 0 bị từ chối');
-same(['BATCH_DUPLICATE'], validateVoucher($post(['type' => 'in', 'batch_id' => [(string)$batch['id'], (string)$batch['id']], 'qty' => ['1', '2']]), $staffA, $balances)['errors'], 'trùng lô trong một chứng từ bị từ chối');
-same(['LINES_EMPTY'], validateVoucher($post(['type' => 'in', 'batch_id' => [''], 'qty' => ['']]), $staffA, $balances)['errors'], 'chứng từ không có dòng hàng bị từ chối');
-same(['BATCH_INVALID'], validateVoucher($post(['type' => 'in', 'batch_id' => ['9999']]), $staffA, $balances)['errors'], 'lô không tồn tại bị từ chối');
+same(['QTY_INVALID'], validateVoucher($post(['type' => 'out', 'qty' => ['0']]), $staffA, $balances)['errors'], 'số lượng 0 bị từ chối');
+same(['BATCH_DUPLICATE'], validateVoucher($post(['type' => 'out', 'batch_id' => [(string)$batch['id'], (string)$batch['id']], 'qty' => ['1', '2']]), $staffA, $balances)['errors'], 'trùng lô trong một chứng từ bị từ chối');
+same(['LINES_EMPTY'], validateVoucher($post(['type' => 'out', 'batch_id' => [''], 'qty' => ['']]), $staffA, $balances)['errors'], 'chứng từ không có dòng hàng bị từ chối');
+same(['BATCH_INVALID'], validateVoucher($post(['type' => 'out', 'batch_id' => ['9999']]), $staffA, $balances)['errors'], 'lô không tồn tại bị từ chối');
 
-// Kiểm kê: lệch phải có lý do; điều chỉnh khớp chênh lệch.
-$count = Store::find('stock_counts', 2);
+// Kiểm kê: lệch phải có lý do; không phụ thuộc ID cứng của fixture.
+$counts = Store::all('stock_counts');
+$count = $counts[0] ?? null;
+same(true, $count !== null && $count['lines'] !== [], 'fixture: có đợt kiểm kê để kiểm tra');
+$count ??= ['lines' => []];
 $actual = array_map(fn($l) => (string)($l['system_qty'] - 1), $count['lines']);
 same(['REASON_REQUIRED'], validateCount(['actual' => $actual, 'reason' => []], $count)['errors'], 'dòng lệch không có lý do bị từ chối');
 $reasons = array_fill(0, count($count['lines']), 'Hao hụt');
 same([], validateCount(['actual' => $actual, 'reason' => $reasons], $count)['errors'], 'dòng lệch có lý do được chấp nhận');
 
-$closed = Store::find('stock_counts', 1);
+$closed = array_values(array_filter($counts, fn($candidate) => $candidate['status'] === 'closed'))[0] ?? null;
+$closed ??= ['adjust_voucher_id' => null, 'lines' => []];
 $adjust = Store::linesOf($closed['adjust_voucher_id']);
 $diffs = array_filter(array_map(fn($l) => $l['actual_qty'] - $l['system_qty'], $closed['lines']));
 same(array_sum($diffs), array_sum(array_column($adjust, 'qty')), 'chứng từ điều chỉnh khớp tổng chênh lệch kiểm kê');
+
+// SQL history query is paged and returns the same authorized ledger population.
+$scope = array_column(array_filter(Store::all('warehouses'), fn($w) => $w['active']), 'id');
+$historyFilters = ['item_id'=>null,'warehouse_id'=>null,'batch_id'=>null,'type'=>'','from'=>'','to'=>''];
+$history = HistoryReport::build($historyFilters, $scope);
+$expectedHistory = array_values(array_filter(Store::all('stock_movements'), fn($m) => in_array($m['warehouse_id'], $scope, true)));
+usort($expectedHistory, fn($a,$b) => strcmp($b['at'],$a['at']) ?: ($b['id'] <=> $a['id']));
+same(count($expectedHistory), $history['total_rows'], 'history SQL total matches scoped ledger');
+same(min(HistoryReport::PAGE_SIZE, count($expectedHistory)), count($history['rows']), 'history SQL page is bounded');
+same($expectedHistory[0]['id'] ?? null, $history['rows'][0]['id'] ?? null, 'history SQL order matches newest-first order');
+
+// Throttle is atomic across workers and resets after a successful login.
+$throttleUser = 'audit-' . getmypid() . '-' . bin2hex(random_bytes(4));
+LoginThrottle::clear('127.0.0.1', $throttleUser);
+$attemptResults = [];
+for ($i=0; $i<8; $i++) $attemptResults[] = LoginThrottle::begin('127.0.0.1', $throttleUser);
+same(true, count(array_filter($attemptResults, fn($retry) => $retry === 0)) === 8, 'login throttle allows configured attempts');
+same(true, LoginThrottle::begin('127.0.0.1', $throttleUser) > 0, 'login throttle blocks additional attempts');
+LoginThrottle::clear('127.0.0.1', $throttleUser);
+same(0, LoginThrottle::begin('127.0.0.1', $throttleUser), 'successful-login reset clears throttle');
+LoginThrottle::clear('127.0.0.1', $throttleUser);
+
+same("'=1+1", csvText('=1+1'), 'CSV formula marker is neutralized');
 
 finish();

@@ -7,7 +7,8 @@ final class Store
 {
     private const TABLES = [
         'warehouses', 'users', 'items', 'units', 'batches', 'vouchers',
-        'voucher_lines', 'stock_movements', 'stock_counts',
+        'voucher_lines', 'stock_movements', 'stock_counts', 'suppliers', 'sales_points',
+        'sales_orders', 'sales_order_lines', 'sales_deliveries', 'sales_delivery_lines',
     ];
 
     private static array $cache = [];
@@ -137,7 +138,8 @@ final class Store
         foreach (['id', 'user_id', 'warehouse_id', 'item_id', 'batch_id', 'voucher_id', 'count_id', 'ref_movement_id',
             'created_by', 'confirmed_by', 'rejected_by', 'checked_by', 'received_by', 'cancelled_by',
             'transfer_checked_by', 'transfer_received_by', 'transfer_cancelled_by',
-            'to_warehouse_id', 'ref_id', 'adjust_voucher_id'] as $key) {
+            'to_warehouse_id', 'ref_id', 'adjust_voucher_id', 'supplier_id', 'parent_id',
+            'sales_point_id', 'sales_delivery_id', 'primary_warehouse_id', 'order_id', 'delivery_id', 'order_line_id'] as $key) {
             if (array_key_exists($key, $row) && $row[$key] !== null) {
                 $row[$key] = (int)$row[$key];
             }

@@ -21,6 +21,14 @@ const ERROR_LABELS = [
     'TRANSFER_SUPPLEMENT_PARENT_INVALID' => 'Phiếu điều chuyển gốc không còn ở trạng thái cần bổ sung.',
     'TRANSFER_SUPPLEMENT_QTY_INVALID' => 'Số lượng vượt phần còn thiếu hoặc đã được một phiếu khác xử lý.',
     'VOUCHER_SAVE_FAILED' => 'Không lưu được phiếu nhập/xuất. Vui lòng thử lại hoặc kiểm tra cấu hình cơ sở dữ liệu.',
+    'SUPPLIER_REQUIRED' => 'Phiếu nhập phải chọn nhà cung cấp.',
+    'SALES_POINT_FORBIDDEN' => 'Bạn không được thao tác với điểm bán này.',
+    'SALES_POINT_WAREHOUSE_MISMATCH' => 'Kho xuất không phải kho phụ trách điểm bán.',
+    'ORDER_QTY_EXCEEDED' => 'Số lượng giao vượt phần còn lại của đơn.',
+    'RECEIVED_QTY_MISSING' => 'Cần nhập số thực nhận cho tất cả mặt hàng của lần giao.',
+    'RECEIVED_QTY_INVALID' => 'Số thực nhận không hợp lệ.',
+    'RECEIVED_QTY_DECREASE' => 'Số thực nhận không thể thấp hơn số đã xác nhận trước đó.',
+    'DELIVERY_NOT_FOUND' => 'Không tìm thấy lần giao hàng.',
 ];
 
 /** Đếm theo ký tự UTF-8 (không cần mbstring); chuỗi sai UTF-8 bị từ chối. */
@@ -32,7 +40,7 @@ function textFits(string $value, int $max): bool
 function validateVoucher(array $input, array $user, array $balances): array
 {
     $errors = [];
-    if ($user['role'] !== 'staff') {
+    if (!in_array($user['role'], ['staff','central_manager','regional_manager'], true)) {
         $errors[] = 'ROLE_FORBIDDEN';
     }
     $type = field($input, 'type');
@@ -55,6 +63,16 @@ function validateVoucher(array $input, array $user, array $balances): array
             || $toWarehouse === null || !$toWarehouse['active']) {
             $errors[] = 'TO_WAREHOUSE_INVALID';
         }
+    }
+
+    $supplierId = intField($input, 'supplier_id');
+    if ($type === 'in') {
+        $supplier = $supplierId === null ? null : Store::find('suppliers', $supplierId);
+        if ($supplier === null || !$supplier['active']) {
+            $errors[] = 'SUPPLIER_REQUIRED';
+        }
+    } else {
+        $supplierId = null;
     }
 
     $note = field($input, 'note');
@@ -100,6 +118,7 @@ function validateVoucher(array $input, array $user, array $balances): array
         'type' => $type,
         'warehouse_id' => $warehouseId ?? 0,
         'to_warehouse_id' => $toWarehouseId,
+        'supplier_id' => $supplierId,
         'note' => $note,
         'lines' => $lines,
     ];

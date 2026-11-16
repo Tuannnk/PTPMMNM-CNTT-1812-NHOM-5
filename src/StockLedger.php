@@ -10,6 +10,9 @@ final class StockLedger
     {
         $result = [];
         foreach ($movements as $m) {
+            if (($m['warehouse_id'] ?? null) === null) {
+                continue;
+            }
             $key = $m['warehouse_id'] . ':' . $m['batch_id'];
             $result[$key] = ($result[$key] ?? 0) + (int)$m['qty'];
         }
@@ -26,10 +29,25 @@ final class StockLedger
     {
         $result = [];
         foreach ($movements as $m) {
+            if (($m['warehouse_id'] ?? null) === null) {
+                continue;
+            }
             if ($warehouseId !== null && $m['warehouse_id'] !== $warehouseId) {
                 continue;
             }
             $result[$m['item_id']] = ($result[$m['item_id']] ?? 0) + (int)$m['qty'];
+        }
+        return $result;
+    }
+
+    /** Tồn theo điểm bán, chỉ gồm các dòng đã ghi nhận tại điểm bán. */
+    public static function bySalesPoint(array $movements, ?int $salesPointId = null): array
+    {
+        $result = [];
+        foreach ($movements as $m) {
+            if (($m['sales_point_id'] ?? null) === null || ($salesPointId !== null && (int)$m['sales_point_id'] !== $salesPointId)) continue;
+            $key = (int)$m['sales_point_id'] . ':' . (int)$m['batch_id'];
+            $result[$key] = ($result[$key] ?? 0) + (int)$m['qty'];
         }
         return $result;
     }

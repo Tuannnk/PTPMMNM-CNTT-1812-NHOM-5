@@ -7,6 +7,9 @@ const ROLE_LABELS = [
     'staff' => 'Nhân viên kho',
     'approver' => 'Người duyệt chứng từ',
     'counter' => 'Phụ trách kiểm kê',
+    'central_manager' => 'Quản lý kho tổng',
+    'regional_manager' => 'Quản lý kho địa điểm',
+    'sales_user' => 'Người dùng điểm bán',
 ];
 
 function canManageCatalog(array $user): bool
@@ -16,7 +19,20 @@ function canManageCatalog(array $user): bool
 
 function canCreateVoucher(array $user): bool
 {
-    return $user['role'] === 'staff';
+    return in_array($user['role'], ['staff', 'central_manager', 'regional_manager'], true);
+}
+
+function canManageSupplyChain(array $user): bool
+{
+    return in_array($user['role'], ['admin', 'central_manager', 'regional_manager'], true);
+}
+
+function canAccessSalesPoint(array $user, int $pointId): bool
+{
+    if (in_array($user['role'], ['admin', 'central_manager'], true)) return true;
+    $q = Database::connection()->prepare('SELECT 1 FROM user_sales_points WHERE user_id=:user AND sales_point_id=:point');
+    $q->execute(['user'=>$user['id'], 'point'=>$pointId]);
+    return (bool)$q->fetchColumn();
 }
 
 function requireCatalogManager(array $user): void
@@ -64,7 +80,8 @@ function requireLogin(): array
 function canAccessWarehouse(array $user, int $warehouseId): bool
 {
     $warehouse = Store::find('warehouses', $warehouseId);
-    return $warehouse !== null && $warehouse['active'] && in_array($warehouseId, $user['warehouses'], true);
+    return $warehouse !== null && $warehouse['active']
+        && ($user['role'] === 'admin' || in_array($warehouseId, $user['warehouses'], true));
 }
 
 function canConfirm(array $user, array $voucher): bool

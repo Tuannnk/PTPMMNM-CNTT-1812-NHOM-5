@@ -6,6 +6,12 @@ $allowed = allowedWarehouses($user);
 $q = field($_GET, 'q');
 $lowOnly = field($_GET, 'low') === '1';
 $byBatch = field($_GET, 'view') === 'batch';
+$selectedWarehouseId = intField($_GET, 'warehouse_id');
+if ($selectedWarehouseId !== null) {
+    $selectedWarehouse = array_values(array_filter($allowed, fn($w) => $w['id'] === $selectedWarehouseId));
+    if (!$selectedWarehouse) forbid();
+    $allowed = $selectedWarehouse;
+}
 
 $movements = Store::all('stock_movements');
 $balances = StockLedger::balances($movements);
@@ -14,9 +20,10 @@ foreach ($allowed as $w) {
     $perWarehouse[$w['id']] = StockLedger::byItem($movements, $w['id']);
 }
 
-$items = array_filter(Store::all('items'), function ($item) use ($q, $lowOnly, $perWarehouse) {
+$items = array_filter(Store::all('items'), function ($item) use ($q, $lowOnly, $perWarehouse, $selectedWarehouseId) {
     $total = array_sum(array_map(fn($byItem) => $byItem[$item['id']] ?? 0, $perWarehouse));
-    return ($q === '' || stripos($item['sku'] . ' ' . $item['name'], $q) !== false)
+    return ($selectedWarehouseId === null || $total > 0)
+        && ($q === '' || stripos($item['sku'] . ' ' . $item['name'], $q) !== false)
         && (!$lowOnly || $total < $item['min_stock']);
 });
 
@@ -25,11 +32,12 @@ $active = 'stock';
 require __DIR__ . '/../templates/header.php';
 ?>
 <header class="page-head">
-  <div><h1>Tra cứu tồn</h1><p>Số tồn được cộng từ các dòng phát sinh đã xác nhận, không nhập tay.</p></div>
-  <div class="actions"><a class="button button--ghost" href="/export.php?<?= e(http_build_query(['q' => $q, 'low' => $lowOnly ? '1' : ''])) ?>">Xuất CSV</a></div>
+  <div><h1><?= $selectedWarehouseId !== null ? 'Mặt hàng còn tồn · '.e($allowed[0]['name']) : 'Tra cứu tồn' ?></h1><p>Số tồn được cộng từ các dòng phát sinh đã xác nhận, không nhập tay.<?= $selectedWarehouseId !== null ? ' Chỉ hiển thị mặt hàng đang có số lượng lớn hơn 0 tại kho này.' : '' ?></p></div>
+  <div class="actions"><a class="button button--ghost" href="/export.php?<?= e(http_build_query(['q' => $q, 'low' => $lowOnly ? '1' : '', 'warehouse_id' => $selectedWarehouseId])) ?>">Xuất CSV</a></div>
 </header>
 
 <form class="filters" method="get">
+  <?php if ($selectedWarehouseId !== null): ?><input type="hidden" name="warehouse_id" value="<?= $selectedWarehouseId ?>"><?php endif; ?>
   <label>Tìm mặt hàng<input name="q" value="<?= e($q) ?>" placeholder="Mã hoặc tên"></label>
   <label>Hiển thị
     <select name="view">
@@ -54,6 +62,7 @@ require __DIR__ . '/../templates/header.php';
     <?php foreach ($items as $item): ?>
       <?php if ($byBatch): ?>
         <?php foreach (Store::batchesOf($item['id']) as $batch): $sum = 0; ?>
+          <?php if ($selectedWarehouseId !== null && StockLedger::balanceOf($balances, $selectedWarehouseId, $batch['id']) <= 0) continue; ?>
           <tr>
             <td><?= e($item['sku']) ?></td><td><?= e($item['name']) ?></td><td><?= e($batch['code']) ?></td>
             <td><?= e($batch['expiry'] ?? '—') ?></td><td><?= e($item['unit_name']) ?></td>
@@ -79,4 +88,5 @@ require __DIR__ . '/../templates/header.php';
 </table>
 </div>
 <?php if (!$items): ?><p class="empty">Không có mặt hàng phù hợp.</p><?php endif; ?>
+<?php if ($selectedWarehouseId !== null): ?><p><a class="text-link" href="/warehouses.php">← Quay lại danh sách kho</a></p><?php endif; ?>
 <?php require __DIR__ . '/../templates/footer.php'; ?>

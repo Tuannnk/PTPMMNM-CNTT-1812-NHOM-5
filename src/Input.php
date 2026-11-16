@@ -33,3 +33,10 @@ function qty(int $value): string
 {
     return number_format($value, 0, ',', '.');
 }
+
+/** Prefix spreadsheet formula markers in untrusted text cells before CSV export. */
+function csvText(mixed $value): string
+{
+    $text = (string)$value;
+    return preg_match('/^[\s]*[=+@\-]/u', $text) ? "'" . $text : $text;
+}
