@@ -41,7 +41,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $outcome = StockCountService::close($count['id'], $user, $lines);
             flash($outcome['already_closed']
                 ? 'Đợt kiểm kê đã được chốt trước đó.'
-                : 'Đã chốt kiểm kê, tạo chứng từ điều chỉnh và cập nhật sổ tồn trong cùng giao dịch.');
+                : ($outcome['needs_approval']
+                    ? 'Đã chốt kiểm kê và lập chứng từ điều chỉnh chờ người duyệt. Sổ tồn chỉ thay đổi sau khi được duyệt.'
+                    : 'Đã chốt kiểm kê. Số thực tế khớp sổ, không cần điều chỉnh.'));
             redirect('/count.php?id=' . $count['id']);
         } catch (DomainException $e) {
             if ($e->getMessage() === 'COUNT_EDIT_FORBIDDEN') forbid('COUNT_EDIT_FORBIDDEN');
@@ -70,13 +72,14 @@ require __DIR__ . '/../templates/header.php';
     <p><?= e(warehouseName($count['warehouse_id'])) ?> · tạo <?= e(dateOnly($count['created_at'])) ?> bởi <?= e(userName($count['created_by'])) ?></p>
   </div>
   <?php if ($adjust): ?>
-    <div class="actions"><a class="button button--ghost" href="/voucher.php?id=<?= $adjust['id'] ?>">Chứng từ điều chỉnh <?= e($adjust['code']) ?></a></div>
+    <div class="actions"><a class="button button--ghost" href="/voucher.php?id=<?= $adjust['id'] ?>">Chứng từ điều chỉnh <?= e($adjust['code']) ?></a> <?= statusBadge($adjust['status']) ?></div>
   <?php endif; ?>
 </header>
 
 <?php if ($result !== null): ?>
   <?php $errors = $result['errors']; require __DIR__ . '/../templates/errors.php'; ?>
 <?php endif; ?>
+<?php if ($adjust && $adjust['status'] === 'draft'): ?><p class="notice">Chênh lệch kiểm kê đang chờ người duyệt xác nhận; sổ tồn chưa thay đổi.</p><?php elseif ($adjust && $adjust['status'] === 'rejected'): ?><p class="error-summary">Người duyệt không chấp nhận chênh lệch của đợt này (<?= e((string)($adjust['reject_reason'] ?? '')) ?>). Sổ tồn không đổi; cần mở đợt kiểm kê mới nếu muốn điều chỉnh.</p><?php endif; ?>
 <?php if ($closeError !== ''): ?><div class="error-summary" role="alert"><?= e($closeError) ?></div><?php endif; ?>
 
 <form method="post" class="card form">

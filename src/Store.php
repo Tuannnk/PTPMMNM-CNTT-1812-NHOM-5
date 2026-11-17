@@ -106,7 +106,7 @@ final class Store
             ));
             foreach ($legacyLines as &$line) {
                 $line['warehouse_id'] = $voucher['warehouse_id'];
-                $line['reason'] = '(chứng từ điều chỉnh cũ)';
+                if (($line['reason'] ?? '') === '') $line['reason'] = '(chứng từ điều chỉnh cũ)';
             }
             unset($line);
             return $legacyLines;

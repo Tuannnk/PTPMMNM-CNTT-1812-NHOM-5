@@ -57,6 +57,24 @@ if ($voucher['type'] === 'transfer') {
         $receiptLines[(int)$receiptLine['voucher_line_id']] = $receiptLine;
     }
 }
+$shortageResolutions = [];
+if ($voucher['type'] === 'transfer' && $receiptLines) {
+    $resolutionQuery = Database::connection()->prepare(
+        'SELECT r.*,v.code AS adjust_code,v.status AS adjust_status FROM transfer_shortage_resolutions r '
+        . 'LEFT JOIN vouchers v ON v.id=r.adjust_voucher_id WHERE r.voucher_id=:id'
+    );
+    $resolutionQuery->execute(['id' => $voucher['id']]);
+    foreach ($resolutionQuery->fetchAll() as $resolution) {
+        $shortageResolutions[(int)$resolution['voucher_line_id']] = $resolution;
+    }
+}
+$canResolveShortage = $voucher['type'] === 'transfer'
+    && in_array($voucher['transfer_state'] ?? '', ['partial', 'received'], true)
+    && $user['role'] === 'staff' && $canSeeSource;
+$shortageCauses = [
+    'SHORT_PICKED' => 'Soạn thiếu — hàng còn ở kho đi',
+    'LOST' => 'Thất lạc khi vận chuyển',
+];
 
 $readIntMap = static function (string $key): array {
     $raw = $_POST[$key] ?? null;
@@ -126,17 +144,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ? 'Đã xác nhận nhận đủ hàng; tồn kho đích đã được cập nhật.'
                     : 'Đã ghi số thực nhận và yêu cầu bổ sung các mặt hàng còn thiếu cho kho đi.');
                 redirect('/voucher.php?id=' . $voucher['id']);
+            } elseif ($action === 'resolve-shortage') {
+                if (!$canResolveShortage) forbid('TRANSFER_SHORTAGE_FORBIDDEN');
+                $outcome = TransferService::resolveShortage($voucher['id'], $user, intField($_POST, 'line_id') ?? 0,
+                    field($_POST, 'cause'), field($_POST, 'cause_note'));
+                flash($outcome['cause'] === 'SHORT_PICKED'
+                    ? 'Đã lập phiếu điều chỉnh hoàn tồn cho kho đi; sổ tồn thay đổi sau khi người duyệt xác nhận.'
+                    : 'Đã lưu biên bản thất lạc. Sổ tồn không đổi vì hàng đã được trừ khỏi kho đi khi xuất.');
+                redirect('/voucher.php?id=' . $voucher['id']);
             } else {
                 forbid('TRANSFER_ACTION_INVALID');
             }
         } catch (DomainException $e) {
-            if (in_array($e->getMessage(), ['CONFIRM_FORBIDDEN', 'TRANSFER_CHECK_FORBIDDEN', 'TRANSFER_RECEIVE_FORBIDDEN'], true)) {
+            if (in_array($e->getMessage(), ['CONFIRM_FORBIDDEN', 'TRANSFER_CHECK_FORBIDDEN', 'TRANSFER_RECEIVE_FORBIDDEN', 'TRANSFER_SHORTAGE_FORBIDDEN'], true)) {
                 forbid($e->getMessage());
             }
             http_response_code(409);
             $workflowError = match ($e->getMessage()) {
                 'TRANSFER_CHECK_REASON_REQUIRED' => 'Nhập lý do kiểm đếm cho từng dòng có số lượng không khớp rồi gửi lại.',
                 'TRANSFER_SHORTAGE_REASON_REQUIRED' => 'Nhập lý do thiếu cho từng dòng nhận thiếu rồi gửi lại.',
+                'TRANSFER_SHORTAGE_CAUSE_INVALID', 'TRANSFER_SHORTAGE_RESOLVED', 'TRANSFER_SHORTAGE_NOT_FOUND' => ERROR_LABELS[$e->getMessage()],
                 default => 'Thao tác không thể hoàn tất: phiếu có thể đã được xử lý hoặc dữ liệu gửi lên không hợp lệ.',
             };
         } catch (Throwable $e) {
@@ -383,11 +410,36 @@ require __DIR__ . '/../templates/header.php';
           : 'Kho đến ghi nhận thiếu tổng ' . qty($missingTotal) . ' đơn vị. Kho đi có thể lập phiếu gửi bù; yêu cầu cũng hiện trên bảng điều khiển kho đi.' ?>
     </p><?php endif; ?>
     <div class="table-wrap"><table class="table table--compact">
-      <thead><tr><th>Mặt hàng</th><th>Lô</th><th class="num">Đã gửi</th><th class="num">Đã nhận</th><th class="num">Thiếu / yêu cầu bổ sung</th><th>Ghi chú</th></tr></thead>
-      <tbody><?php foreach ($lines as $line): $receipt = $receiptLines[$line['id']] ?? null; if (!$receipt) continue; ?>
-        <tr><td><?= e($items[$line['item_id']]['name']) ?></td><td><?= e($batches[$line['batch_id']]['code']) ?></td><td class="num"><?= qty($line['qty']) ?></td><td class="num"><?= qty((int)$receipt['received_qty']) ?></td><td class="num"><?= qty((int)$receipt['missing_qty']) ?></td><td><?= e($receipt['note'] ?: '—') ?></td></tr>
+      <thead><tr><th>Mặt hàng</th><th>Lô</th><th class="num">Đã gửi</th><th class="num">Đã nhận</th><th class="num">Thiếu / yêu cầu bổ sung</th><th>Ghi chú</th><th>Nguyên nhân thiếu (kho đi)</th></tr></thead>
+      <tbody><?php foreach ($lines as $line): $receipt = $receiptLines[$line['id']] ?? null; if (!$receipt) continue; $resolution = $shortageResolutions[$line['id']] ?? null; ?>
+        <tr><td><?= e($items[$line['item_id']]['name']) ?></td><td><?= e($batches[$line['batch_id']]['code']) ?></td><td class="num"><?= qty($line['qty']) ?></td><td class="num"><?= qty((int)$receipt['received_qty']) ?></td><td class="num"><?= qty((int)$receipt['missing_qty']) ?></td><td><?= e($receipt['note'] ?: '—') ?></td>
+          <td><?php if ((int)$receipt['missing_qty'] <= 0): ?>—<?php elseif ($resolution): ?>
+            <?= e($shortageCauses[$resolution['cause']] ?? $resolution['cause']) ?>: <?= e($resolution['note']) ?>
+            <br><span class="muted"><?= e(userName((int)$resolution['resolved_by'])) ?> · <?= e(dateOnly($resolution['resolved_at'])) ?></span>
+            <?php if ($resolution['adjust_voucher_id']): ?><br><a class="text-link" href="/voucher.php?id=<?= (int)$resolution['adjust_voucher_id'] ?>"><?= e($resolution['adjust_code']) ?></a> <?= statusBadge($resolution['adjust_status']) ?><?php endif; ?>
+          <?php else: ?><span class="muted">Chưa xác nhận</span><?php endif; ?></td></tr>
       <?php endforeach; ?></tbody>
     </table></div>
+    <?php
+      $unresolved = array_values(array_filter($lines, function ($line) use ($receiptLines, $shortageResolutions) {
+          $receipt = $receiptLines[$line['id']] ?? null;
+          $resolution = $shortageResolutions[$line['id']] ?? null;
+          return $receipt && (int)$receipt['missing_qty'] > 0 && (!$resolution || $resolution['adjust_status'] === 'rejected');
+      }));
+    ?>
+    <?php if ($canResolveShortage && $unresolved): ?>
+      <h3>Xác nhận nguyên nhân hàng thiếu</h3>
+      <p class="muted">Kho đi kiểm tra lại từng dòng thiếu. <strong>Soạn thiếu</strong>: hàng vẫn ở kho đi, hệ thống lập phiếu điều chỉnh cộng lại tồn kho đi (cần người duyệt). <strong>Thất lạc</strong>: lưu biên bản, sổ không đổi vì kho đi đã bị trừ khi xuất. Việc gửi bù vẫn thực hiện bình thường.</p>
+      <?php foreach ($unresolved as $line): ?>
+        <form method="post" class="form form-row">
+          <?= csrfInput() ?><input type="hidden" name="action" value="resolve-shortage"><input type="hidden" name="line_id" value="<?= (int)$line['id'] ?>">
+          <span class="form-field"><strong><?= e($items[$line['item_id']]['name']) ?></strong> · <?= e($batches[$line['batch_id']]['code']) ?> · thiếu <?= qty((int)$receiptLines[$line['id']]['missing_qty']) ?></span>
+          <label class="form-field">Nguyên nhân<select name="cause" required><option value="">— Chọn —</option><?php foreach ($shortageCauses as $key => $label): ?><option value="<?= e($key) ?>"><?= e($label) ?></option><?php endforeach; ?></select></label>
+          <label class="form-field form-field--wide">Lý do / ghi chú<input name="cause_note" maxlength="255" required></label>
+          <button class="button">Xác nhận</button>
+        </form>
+      <?php endforeach; ?>
+    <?php endif; ?>
   <?php endif; ?>
 
   <?php if (($voucher['transfer_state'] ?? '') === 'cancelled'): ?>

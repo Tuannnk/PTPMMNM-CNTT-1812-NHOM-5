@@ -6,7 +6,7 @@ cd "$root" || exit 2
 port="${PORT:-8110}"
 
 usage() {
-  printf 'Cách dùng: bash app.sh check | run | test | lint\n'
+  printf 'Cách dùng: bash app.sh check | run | test | integration | lint\n'
 }
 check_env() {
   command -v php >/dev/null 2>&1 || { echo 'THIEU_PHP: sudo apt install php-cli'; return 2; }
@@ -25,6 +25,9 @@ case "${1:-help}" in
   test)
     check_env || exit 2
     php tests/run.php ;;
+  integration)
+    check_env || exit 2
+    php tests/integration.php ;;
   lint)
     check_env || exit 2
     fail=0
