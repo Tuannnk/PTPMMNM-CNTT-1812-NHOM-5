@@ -48,6 +48,8 @@ final class SalesOrderService
             }
 
             $insert = $db->prepare('INSERT INTO sales_order_lines (order_id,item_id,batch_id,requested_qty) VALUES (:order,:item,:batch,:qty)');
+            // Chỉ đặt lô còn hàng ở kho phụ trách, không vượt số tồn hiện có (chưa giữ chỗ hàng).
+            $available = $db->prepare('SELECT COALESCE(SUM(qty),0) FROM stock_movements WHERE warehouse_id=:warehouse AND batch_id=:batch');
             $seen = [];
             foreach ($lines as $line) {
                 $batch = (int)$line['batch_id'];
@@ -57,6 +59,10 @@ final class SalesOrderService
                     throw new DomainException('LINE_INVALID');
                 }
                 $seen[$batch] = true;
+                $available->execute(['warehouse' => $warehouseId, 'batch' => $batch]);
+                $stock = (int)$available->fetchColumn();
+                if ($stock <= 0) throw new DomainException('SALES_BATCH_UNAVAILABLE');
+                if ($qty > $stock) throw new DomainException('SALES_QTY_EXCEEDS_STOCK');
                 $insert->execute(['order' => $id, 'item' => $item, 'batch' => $batch, 'qty' => $qty]);
             }
             $db->commit();

@@ -39,21 +39,13 @@ function voucherList(array $vouchers, string $empty, ?callable $meta = null, int
     return $html;
 }
 
-function salesStatusLabel(string $status): string
-{
-    return [
-        'PENDING' => 'Chờ duyệt', 'APPROVED' => 'Đã duyệt, chờ xuất', 'DELIVERING' => 'Đang giao',
-        'PARTIALLY_RECEIVED' => 'Nhận một phần', 'COMPLETED' => 'Hoàn tất', 'CANCELLED' => 'Đã hủy', 'DRAFT' => 'Nháp',
-    ][$status] ?? $status;
-}
-
 function salesOrderList(array $orders, string $empty): string
 {
     if (!$orders) return '<p class="empty">' . e($empty) . '</p>';
     $html = '<ul class="list">';
     foreach ($orders as $o) {
         $html .= '<li><a href="/sales-order.php?id=' . (int)$o['id'] . '"><strong>' . e($o['code']) . '</strong></a> '
-            . '<span class="badge badge--wait">' . e(salesStatusLabel($o['status'])) . '</span> '
+            . salesStatusBadge($o['status']) . ' '
             . '<span class="muted">' . e($o['warehouse_code'] . ' → ' . $o['point_name'])
             . ((int)$o['remaining'] > 0 ? ' · còn ' . qty((int)$o['remaining']) . ' cần xuất' : '') . '</span> '
             . ageBadge($o['created_at'], 'tạo') . '</li>';

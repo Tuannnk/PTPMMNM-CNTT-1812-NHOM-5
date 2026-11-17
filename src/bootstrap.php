@@ -57,6 +57,30 @@ const TRANSFER_STATE_LABELS = [
     'cancelled' => 'Đã hủy',
 ];
 
+const SALES_ORDER_STATUS = [
+    'DRAFT' => ['Nháp', 'badge'],
+    'PENDING' => ['Chờ duyệt', 'badge badge--wait'],
+    'APPROVED' => ['Đã duyệt, chờ xuất', 'badge badge--transfer'],
+    'DELIVERING' => ['Đang giao', 'badge badge--transfer'],
+    'PARTIALLY_RECEIVED' => ['Đã nhận một phần', 'badge badge--wait'],
+    'COMPLETED' => ['Hoàn tất', 'badge badge--ok'],
+    'CANCELLED' => ['Đã hủy', 'badge badge--rejected'],
+];
+
+const SALES_DELIVERY_STATUS = [
+    'DELIVERING' => ['Đang giao', 'badge badge--transfer'],
+    'PARTIALLY_RECEIVED' => ['Nhận thiếu', 'badge badge--wait'],
+    'COMPLETED' => ['Đã nhận đủ', 'badge badge--ok'],
+    'CANCELLED' => ['Đã hủy', 'badge badge--rejected'],
+];
+
+/** Nhãn trạng thái đơn phân phối / lần giao bằng tiếng Việt. */
+function salesStatusBadge(string $status, bool $delivery = false): string
+{
+    [$label, $class] = ($delivery ? SALES_DELIVERY_STATUS : SALES_ORDER_STATUS)[$status] ?? [$status, 'badge'];
+    return '<span class="' . $class . '">' . e($label) . '</span>';
+}
+
 function checkCsrf(array $input): void
 {
     $token = $input['csrf'] ?? '';
