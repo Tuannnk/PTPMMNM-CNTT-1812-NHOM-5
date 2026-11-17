@@ -112,13 +112,14 @@ final class AdjustmentService
                 $after[$key] += $line['qty'];
             }
             $negative = array_filter($after, static fn($qty) => $qty < 0);
-            if ($negative) { $db->commit(); return ['confirmed'=>false,'negative'=>$negative]; }
+            if ($negative) { $db->rollBack(); return ['confirmed'=>false,'negative'=>$negative]; }
             $movementInsert = $db->prepare('INSERT INTO stock_movements (voucher_id,warehouse_id,item_id,batch_id,qty,occurred_at)
                 VALUES (:voucher,:warehouse,:item,:batch,:qty,clock_timestamp())');
             foreach ($lines as $line) $movementInsert->execute(['voucher'=>$voucherId,'warehouse'=>$line['warehouse_id'],
                 'item'=>$line['item_id'],'batch'=>$line['batch_id'],'qty'=>$line['qty']]);
-            $update = $db->prepare("UPDATE vouchers SET status='confirmed',confirmed_by=:user,confirmed_at=now() WHERE id=:id");
+            $update = $db->prepare("UPDATE vouchers SET status='confirmed',confirmed_by=:user,confirmed_at=now() WHERE id=:id AND status='draft'");
             $update->execute(['user'=>$approver['id'],'id'=>$voucherId]);
+            if ($update->rowCount() !== 1) throw new DomainException('VOUCHER_STATE_CHANGED');
             $db->commit();
             return ['confirmed'=>true,'negative'=>[]];
         } catch (Throwable $e) {
