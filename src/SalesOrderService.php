@@ -5,6 +5,7 @@ final class SalesOrderService
 {
     public static function createDraft(array $actor, int $pointId, int $warehouseId, array $lines, string $requestKey, string $note = ''): int
     {
+        self::assertRequestKey($requestKey);
         if ($actor['role'] === 'sales_user') {
             if (!self::userPoint((int)$actor['id'], $pointId)) {
                 throw new DomainException('SALES_POINT_FORBIDDEN');
@@ -37,9 +38,11 @@ final class SalesOrderService
             $q->execute(['point' => $pointId, 'warehouse' => $warehouseId, 'user' => $actor['id'], 'note' => $note, 'key' => $requestKey]);
             $id = $q->fetchColumn();
             if ($id === false) {
-                $q = $db->prepare('SELECT id FROM sales_orders WHERE request_key=:key');
-                $q->execute(['key' => $requestKey]);
+                // Chỉ trả lại đơn cũ khi chính người này gửi lại cùng khóa; không lộ đơn của người khác.
+                $q = $db->prepare('SELECT id FROM sales_orders WHERE request_key=:key AND created_by=:user');
+                $q->execute(['key' => $requestKey, 'user' => $actor['id']]);
                 $id = $q->fetchColumn();
+                if ($id === false) throw new DomainException('REQUEST_KEY_INVALID');
                 $db->commit();
                 return (int)$id;
             }
@@ -79,6 +82,7 @@ final class SalesOrderService
             if ($order['status'] !== 'PENDING') throw new DomainException('ORDER_STATE_INVALID');
             $update = $db->prepare("UPDATE sales_orders SET status='APPROVED',approved_by=:user,approved_at=now() WHERE id=:id AND status='PENDING'");
             $update->execute(['user' => $actor['id'], 'id' => $orderId]);
+            if ($update->rowCount() !== 1) throw new DomainException('ORDER_STATE_INVALID');
             $db->commit();
         } catch (Throwable $e) {
             if ($db->inTransaction()) $db->rollBack();
@@ -88,6 +92,7 @@ final class SalesOrderService
 
     public static function dispatch(array $actor, int $orderId, array $lines, string $requestKey): int
     {
+        self::assertRequestKey($requestKey);
         $db = Database::connection();
         $db->beginTransaction();
         try {
@@ -102,12 +107,15 @@ final class SalesOrderService
                 throw new DomainException('ORDER_STATE_INVALID');
             }
 
-            $existing = $db->prepare('SELECT id FROM sales_deliveries WHERE request_key=:key');
+            $existing = $db->prepare('SELECT id,order_id,delivered_by FROM sales_deliveries WHERE request_key=:key');
             $existing->execute(['key' => $requestKey]);
-            $found = $existing->fetchColumn();
+            $found = $existing->fetch();
             if ($found !== false) {
+                if ((int)$found['order_id'] !== $orderId || (int)$found['delivered_by'] !== (int)$actor['id']) {
+                    throw new DomainException('REQUEST_KEY_INVALID');
+                }
                 $db->commit();
-                return (int)$found;
+                return (int)$found['id'];
             }
 
             InventoryGuard::lockWarehouses($db, [(int)$order['warehouse_id']]);
@@ -176,7 +184,8 @@ final class SalesOrderService
             $query->execute(['id' => $deliveryId]);
             $delivery = $query->fetch();
             if (!$delivery) throw new DomainException('DELIVERY_NOT_FOUND');
-            if (!canAccessSalesPoint($actor, (int)$delivery['sales_point_id'])) {
+            // Chỉ người dùng điểm bán được liên kết mới xác nhận nhận hàng; bên kho không tự xác nhận thay.
+            if (!self::canConfirmReceipt($actor, (int)$delivery['sales_point_id'])) {
                 throw new DomainException('SALES_POINT_FORBIDDEN');
             }
             if (!in_array($delivery['status'], ['DELIVERING', 'PARTIALLY_RECEIVED'], true)) {
@@ -196,9 +205,7 @@ final class SalesOrderService
             $voucherQuery->execute(['code' => $delivery['code']]);
             $voucherId = $voucherQuery->fetchColumn();
             if ($voucherId === false) throw new DomainException('DELIVERY_STATE_INVALID');
-            $findMovement = $db->prepare('SELECT id FROM stock_movements WHERE voucher_id=:voucher AND sales_point_id=:point AND batch_id=:batch FOR UPDATE');
-            $insertMovement = $db->prepare("INSERT INTO stock_movements(voucher_id,sales_point_id,item_id,batch_id,qty,sales_delivery_id,ownership) VALUES(:voucher,:point,:item,:batch,:qty,:delivery,'COMPANY_OWNED')");
-            $increaseMovement = $db->prepare('UPDATE stock_movements SET qty=qty+:qty WHERE id=:id');
+            $insertMovement = $db->prepare("INSERT INTO stock_movements(voucher_id,sales_point_id,item_id,batch_id,qty,sales_delivery_id,ownership,occurred_at) VALUES(:voucher,:point,:item,:batch,:qty,:delivery,'COMPANY_OWNED',clock_timestamp())");
             $updateLine = $db->prepare('UPDATE sales_delivery_lines SET received_qty=:qty,shortage_qty=:shortage WHERE id=:id');
             $complete = true;
             foreach ($lines as $line) {
@@ -210,13 +217,8 @@ final class SalesOrderService
                 if ($qty < $previous) throw new DomainException('RECEIVED_QTY_DECREASE');
                 $delta = $qty - $previous;
                 if ($delta > 0) {
-                    $findMovement->execute(['voucher' => $voucherId, 'point' => $delivery['sales_point_id'], 'batch' => $batch]);
-                    $movementId = $findMovement->fetchColumn();
-                    if ($movementId === false) {
-                        $insertMovement->execute(['voucher' => $voucherId, 'point' => $delivery['sales_point_id'], 'item' => $line['item_id'], 'batch' => $batch, 'qty' => $delta, 'delivery' => $deliveryId]);
-                    } else {
-                        $increaseMovement->execute(['qty' => $delta, 'id' => $movementId]);
-                    }
+                    // Sổ chỉ nối thêm: mỗi lần nhận thêm là một dòng mới với thời điểm riêng.
+                    $insertMovement->execute(['voucher' => $voucherId, 'point' => $delivery['sales_point_id'], 'item' => $line['item_id'], 'batch' => $batch, 'qty' => $delta, 'delivery' => $deliveryId]);
                 }
                 $updateLine->execute(['qty' => $qty, 'shortage' => (int)$line['shipped_qty'] - $qty, 'id' => $line['id']]);
                 if ($qty !== (int)$line['shipped_qty']) $complete = false;
@@ -239,6 +241,18 @@ final class SalesOrderService
         } catch (Throwable $e) {
             if ($db->inTransaction()) $db->rollBack();
             throw $e;
+        }
+    }
+
+    public static function canConfirmReceipt(array $actor, int $pointId): bool
+    {
+        return $actor['role'] === 'sales_user' && self::userPoint((int)$actor['id'], $pointId);
+    }
+
+    private static function assertRequestKey(string $requestKey): void
+    {
+        if (!preg_match('/^[a-f0-9]{64}$/', $requestKey)) {
+            throw new DomainException('REQUEST_KEY_INVALID');
         }
     }
 

@@ -33,6 +33,9 @@ if ($user && canCreateVoucher($user)) {
 if ($user && canManageCatalog($user)) {
     $nav['Danh mục'][] = ['access', '/access.php', 'Tài khoản & phân quyền'];
 }
+if ($user && $user['role'] === 'sales_user') {
+    $nav['Chuỗi cung ứng'] = array_values(array_filter($nav['Chuỗi cung ứng'], fn($link) => $link[0] !== 'suppliers'));
+}
 $navIcons = [
     'dashboard' => '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></svg>',
     'vouchers' => '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3.5h7l4 4v13H7z"/><path d="M14 3.5v4h4M10 12h5M10 16h5"/></svg>',

@@ -39,6 +39,7 @@ const VOUCHER_TYPES = [
     'out' => 'Phiếu xuất',
     'transfer' => 'Điều chuyển',
     'adjust' => 'Điều chỉnh',
+    'sale' => 'Xuất phân phối',
 ];
 
 const VOUCHER_STATUS = [

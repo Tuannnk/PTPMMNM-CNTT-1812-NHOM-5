@@ -1,5 +1,5 @@
 <?php
-require __DIR__.'/../src/bootstrap.php'; $user=requireLogin(); $error='';
+require __DIR__.'/../src/bootstrap.php'; $user=requireLogin(); if($user['role']==='sales_user')forbid('SUPPLIER_SCOPE_FORBIDDEN'); $error='';
 if($_SERVER['REQUEST_METHOD']==='POST'){requirePost();try{SupplierService::save($user,$_POST,intField($_POST,'id'));flash('Đã lưu nhà cung cấp.');redirect('/suppliers.php');}catch(DomainException $e){$error=ERROR_LABELS[$e->getMessage()]??'Không lưu được nhà cung cấp. Kiểm tra mã và tên công ty.';}catch(Throwable $e){error_log('Supplier save failed: '.$e->getMessage());$error='Không lưu được nhà cung cấp. Mã có thể đã tồn tại.';}}
 $suppliers=Store::all('suppliers');$q=trim(field($_GET,'q'));if($q!=='')$suppliers=array_filter($suppliers,fn($s)=>stripos($s['code'].' '.$s['company_name'].' '.$s['tax_code'].' '.$s['address'],$q)!==false);$editing=isset($_GET['edit'])?Store::find('suppliers',intField($_GET,'edit')??0):null;$title='Nhà cung cấp';$active='suppliers';require __DIR__.'/../templates/header.php';
 ?>
