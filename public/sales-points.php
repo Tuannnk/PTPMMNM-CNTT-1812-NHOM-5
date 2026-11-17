@@ -1,7 +1,7 @@
 <?php
 require __DIR__.'/../src/bootstrap.php';$user=requireLogin();$error='';
 if($_SERVER['REQUEST_METHOD']==='POST'){requirePost();try{SalesPointService::save($user,$_POST,intField($_POST,'id'));flash('Đã lưu điểm bán.');redirect('/sales-points.php');}catch(DomainException $e){$error=ERROR_LABELS[$e->getMessage()]??'Không lưu được điểm bán. Kiểm tra mã, tên, loại và kho phụ trách.';}catch(Throwable $e){error_log('Sales point save failed: '.$e->getMessage());$error='Không lưu được điểm bán. Mã có thể đã tồn tại.';}}
-$points=Store::all('sales_points');$warehouses=Store::all('warehouses');$editing=isset($_GET['edit'])?Store::find('sales_points',intField($_GET,'edit')??0):null;$title='Điểm bán';$active='sales-points';require __DIR__.'/../templates/header.php';
+$points=Store::all('sales_points');if($user['role']==='sales_user')$points=array_values(array_filter($points,fn($p)=>canAccessSalesPoint($user,(int)$p['id'])));$warehouses=Store::all('warehouses');$editing=isset($_GET['edit'])?Store::find('sales_points',intField($_GET,'edit')??0):null;$title='Điểm bán';$active='sales-points';require __DIR__.'/../templates/header.php';
 ?>
 <header class="page-head"><div><h1>Điểm bán</h1><p>Đại lý, cửa hàng và siêu thị thuộc phạm vi kho địa điểm.</p></div><a class="button" href="/sales-orders.php">Đơn phân phối</a></header>
 <?php if($error):?><div class="error-summary" role="alert"><?=e($error)?></div><?php endif;?>
