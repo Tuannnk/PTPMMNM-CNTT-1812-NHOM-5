@@ -485,6 +485,114 @@ final class TransferService
         }
     }
 
+    /**
+     * Kho đi xác nhận nguyên nhân thiếu của một dòng đã nhận thiếu.
+     * SHORT_PICKED: hàng còn ở kho đi -> phiếu điều chỉnh +thiếu cho kho đi, chờ người duyệt ghi sổ.
+     * LOST: thất lạc -> chỉ lưu biên bản; kho đi đã bị trừ khi duyệt xuất nên sổ không đổi.
+     * Phiếu điều chỉnh bị từ chối thì được xác nhận lại.
+     *
+     * @return array{cause:string, adjust_voucher_id:?int}
+     */
+    public static function resolveShortage(int $voucherId, array $user, int $lineId, string $cause, string $note): array
+    {
+        $note = trim($note);
+        if (!in_array($cause, ['SHORT_PICKED', 'LOST'], true) || $note === '' || !textFits($note, 255)) {
+            throw new DomainException('TRANSFER_SHORTAGE_CAUSE_INVALID');
+        }
+        $db = Database::connection();
+        $db->beginTransaction();
+        try {
+            $voucher = self::lockedTransfer($db, $voucherId);
+            if ($user['role'] !== 'staff' || !canAccessWarehouse($user, $voucher['warehouse_id'])) {
+                throw new DomainException('TRANSFER_SHORTAGE_FORBIDDEN');
+            }
+            if (!in_array(self::workflowState($db, $voucherId), ['partial', 'received'], true)) {
+                throw new DomainException('TRANSFER_STATE_CHANGED');
+            }
+            $lineQuery = $db->prepare(
+                'SELECT vl.id,vl.item_id,vl.batch_id,rl.missing_qty FROM voucher_lines vl '
+                . 'JOIN transfer_receipt_lines rl ON rl.voucher_line_id=vl.id '
+                . 'WHERE vl.id=:line AND vl.voucher_id=:voucher AND rl.missing_qty>0'
+            );
+            $lineQuery->execute(['line' => $lineId, 'voucher' => $voucherId]);
+            $line = $lineQuery->fetch();
+            if (!$line) {
+                throw new DomainException('TRANSFER_SHORTAGE_NOT_FOUND');
+            }
+            $missing = (int)$line['missing_qty'];
+
+            $existingQuery = $db->prepare(
+                'SELECT r.id,v.status AS adjust_status FROM transfer_shortage_resolutions r '
+                . 'LEFT JOIN vouchers v ON v.id=r.adjust_voucher_id WHERE r.voucher_line_id=:line FOR UPDATE OF r'
+            );
+            $existingQuery->execute(['line' => $lineId]);
+            $existing = $existingQuery->fetch();
+            if ($existing) {
+                if ($existing['adjust_status'] !== 'rejected') {
+                    throw new DomainException('TRANSFER_SHORTAGE_RESOLVED');
+                }
+                $db->prepare('DELETE FROM transfer_shortage_resolutions WHERE id=:id')->execute(['id' => $existing['id']]);
+            }
+
+            $adjustId = null;
+            if ($cause === 'SHORT_PICKED') {
+                $movementQuery = $db->prepare(
+                    'SELECT id FROM stock_movements WHERE voucher_id=:voucher AND warehouse_id=:warehouse AND batch_id=:batch AND qty<0'
+                );
+                $movementQuery->execute(['voucher' => $voucherId, 'warehouse' => $voucher['warehouse_id'], 'batch' => (int)$line['batch_id']]);
+                $movementId = $movementQuery->fetchColumn();
+                if ($movementId === false) {
+                    throw new DomainException('TRANSFER_SHORTAGE_NOT_FOUND');
+                }
+                $insertVoucher = $db->prepare(
+                    "INSERT INTO vouchers (code,type,status,warehouse_id,created_by,note,ref_id,request_key) "
+                    . "VALUES (:code,'adjust','draft',:warehouse,:user,:note,:ref,:key) RETURNING id"
+                );
+                $insertVoucher->execute([
+                    'code' => 'DC-' . date('Ymd') . '-' . strtoupper(bin2hex(random_bytes(6))),
+                    'warehouse' => $voucher['warehouse_id'],
+                    'user' => $user['id'],
+                    'note' => 'Hoàn tồn hàng soạn thiếu của ' . $voucher['code'],
+                    'ref' => $voucherId,
+                    'key' => bin2hex(random_bytes(24)),
+                ]);
+                $adjustId = (int)$insertVoucher->fetchColumn();
+                $db->prepare(
+                    'INSERT INTO adjustment_lines (voucher_id,warehouse_id,item_id,batch_id,ref_movement_id,qty,reason) '
+                    . 'VALUES (:voucher,:warehouse,:item,:batch,:movement,:qty,:reason)'
+                )->execute([
+                    'voucher' => $adjustId,
+                    'warehouse' => $voucher['warehouse_id'],
+                    'item' => (int)$line['item_id'],
+                    'batch' => (int)$line['batch_id'],
+                    'movement' => (int)$movementId,
+                    'qty' => $missing,
+                    'reason' => 'Soạn thiếu khi điều chuyển ' . $voucher['code'] . ': ' . $note,
+                ]);
+            }
+
+            $db->prepare(
+                'INSERT INTO transfer_shortage_resolutions (voucher_id,voucher_line_id,cause,qty,note,adjust_voucher_id,resolved_by) '
+                . 'VALUES (:voucher,:line,:cause,:qty,:note,:adjust,:user)'
+            )->execute([
+                'voucher' => $voucherId,
+                'line' => $lineId,
+                'cause' => $cause,
+                'qty' => $missing,
+                'note' => $note,
+                'adjust' => $adjustId,
+                'user' => $user['id'],
+            ]);
+            $db->commit();
+            return ['cause' => $cause, 'adjust_voucher_id' => $adjustId];
+        } catch (Throwable $e) {
+            if ($db->inTransaction()) {
+                $db->rollBack();
+            }
+            throw $e;
+        }
+    }
+
     private static function lockedTransfer(PDO $db, int $voucherId): array
     {
         $query = $db->prepare('SELECT * FROM vouchers WHERE id=:id AND type=\'transfer\' FOR UPDATE');
