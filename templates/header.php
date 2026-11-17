@@ -34,7 +34,11 @@ if ($user && canManageCatalog($user)) {
     $nav['Danh mục'][] = ['access', '/access.php', 'Tài khoản & phân quyền'];
 }
 if ($user && $user['role'] === 'sales_user') {
-    $nav['Chuỗi cung ứng'] = array_values(array_filter($nav['Chuỗi cung ứng'], fn($link) => $link[0] !== 'suppliers'));
+    // Người dùng điểm bán chỉ làm việc với đơn phân phối và tồn tại điểm bán của mình.
+    $nav = [
+        'Tổng quan' => $nav['Tổng quan'],
+        'Điểm bán' => array_values(array_filter($nav['Chuỗi cung ứng'], fn($link) => in_array($link[0], ['sales-orders', 'sales-stock'], true))),
+    ];
 }
 $navIcons = [
     'dashboard' => '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></svg>',

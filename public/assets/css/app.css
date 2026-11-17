@@ -166,6 +166,19 @@ code { font-size: .8em; color: var(--muted); }
 .stat strong { display: block; margin-top: .55rem; font-size: 1.8rem; font-weight: 750; line-height: 1.1; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
 .stat--warn::before { background: var(--warn); }
 .stat--warn strong { color: var(--warn); }
+.stat--danger::before { background: var(--danger); }
+.stat--danger strong { color: var(--danger); }
+.stat--ok::before { background: var(--ok); }
+.stat small { display: block; margin-top: .3rem; color: var(--muted); font-size: .72rem; }
+.card h3 { margin: 1.1rem 0 .2rem; font-size: .86rem; }
+.card h2 + h3 { margin-top: .4rem; }
+.meter { display: inline-block; width: 100%; min-width: 70px; max-width: 160px; height: 7px; overflow: hidden; border-radius: 999px; background: var(--danger-soft); vertical-align: middle; }
+.meter > span { display: block; height: 100%; border-radius: inherit; background: var(--danger); }
+.meter--warn { background: var(--warn-soft); }
+.meter--warn > span { background: var(--warn); }
+.meter--primary { background: var(--primary-soft); }
+.page-head h1 .badge { margin-left: .35rem; font-size: .72rem; letter-spacing: normal; vertical-align: middle; }
+.meter--primary > span { background: var(--primary); }
 .list { margin: 0; padding: 0; list-style: none; }
 .list li { display: flex; flex-wrap: wrap; align-items: center; gap: .42rem .55rem; padding: .72rem 0; border-bottom: 1px solid var(--line); }
 .list li:last-child { border-bottom: 0; }
