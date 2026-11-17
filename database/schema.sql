@@ -94,6 +94,11 @@ CREATE TABLE IF NOT EXISTS vouchers (
         OR status <> 'confirmed')
 );
 
+-- Bổ sung cột cho database tạo từ schema cũ (CREATE TABLE IF NOT EXISTS không thêm cột).
+ALTER TABLE vouchers ADD COLUMN IF NOT EXISTS rejected_by bigint REFERENCES users(id);
+ALTER TABLE vouchers ADD COLUMN IF NOT EXISTS rejected_at timestamptz;
+ALTER TABLE vouchers ADD COLUMN IF NOT EXISTS reject_reason text NOT NULL DEFAULT '';
+
 -- Khóa gửi lại cho các phiếu điều chuyển; NULL giữ tương thích với chứng từ cũ.
 ALTER TABLE vouchers ADD COLUMN IF NOT EXISTS request_key varchar(64);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_vouchers_request_key ON vouchers (request_key);

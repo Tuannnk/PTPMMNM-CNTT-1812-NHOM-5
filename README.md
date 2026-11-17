@@ -4,7 +4,7 @@ Bài tập lớn học phần **Phát triển phần mềm mã nguồn mở**, n
 
 Phần mềm giúp một đơn vị theo dõi kho tổng, kho địa điểm, nhà cung cấp và phân phối đến đại lý/cửa hàng/siêu thị. Số tồn **không nhập tay**: hệ thống tính từ sổ phát sinh của chứng từ đã xác nhận, gồm cả tồn vận hành tại điểm bán.
 
-> **Trạng thái hiện tại:** ứng dụng đọc và ghi dữ liệu qua PostgreSQL; phiếu nhập/xuất, điều chuyển, kiểm kê, điều chỉnh và các cấu trúc phân phối được hỗ trợ. Regression test đạt `TESTS=27 FAILED=0`; integration/concurrency test vẫn chưa chạy.
+> **Trạng thái hiện tại:** ứng dụng đọc và ghi dữ liệu qua PostgreSQL; phiếu nhập/xuất, điều chuyển, kiểm kê, điều chỉnh và các cấu trúc phân phối được hỗ trợ. Regression test đạt `TESTS=27 FAILED=0`; integration test (điều chuyển thiếu, kiểm kê qua duyệt) đạt `TESTS=20 FAILED=0`; concurrency test vẫn chưa chạy.
 
 ## Người sử dụng
 
@@ -226,6 +226,13 @@ Database đã chạy migration chuỗi cung ứng trước đây cần chạy th
 psql -h 127.0.0.1 -U ptpmmnm_cntt_1812_nhom_5 -d ptpmmnm_cntt_1812_nhom_5 -f database/migrations/003_sales_receipt_append_only.sql
 ```
 
+Tiếp theo chạy hai migration: `004` tạo bảng ghi nguyên nhân hàng nhận thiếu khi điều chuyển, `005` bổ sung các cột "Không duyệt phiếu" mà database tạo từ schema cũ còn thiếu. Cả hai an toàn khi chạy lặp lại:
+
+```bash
+psql -h 127.0.0.1 -U ptpmmnm_cntt_1812_nhom_5 -d ptpmmnm_cntt_1812_nhom_5 -f database/migrations/004_transfer_shortage_resolution.sql
+psql -h 127.0.0.1 -U ptpmmnm_cntt_1812_nhom_5 -d ptpmmnm_cntt_1812_nhom_5 -f database/migrations/005_voucher_reject_columns.sql
+```
+
 Migration tạo kho tổng `CENTRAL-01`, chuyển ba kho cũ thành `REGIONAL` trực thuộc kho tổng, tạo nhà cung cấp, điểm bán, đơn/giao phân phối và mở rộng sổ phát sinh. Migration không di chuyển tồn, không nạp dữ liệu mẫu và có thể chạy lặp lại. Hãy backup và kiểm tra preflight trước khi chạy trên database có dữ liệu thật.
 
 Từ thư mục dự án, cấu hình kết nối ứng dụng:
@@ -279,6 +286,7 @@ Sau khi chạy `database/seed-supply-chain-demo.sql`, có thêm 8 tài khoản: 
 
 ```bash
 bash app.sh test    # logic nghiệp vụ: TESTS=27 FAILED=0
+bash app.sh integration  # luồng thật trên PostgreSQL, tự ROLLBACK: TESTS=20 FAILED=0
 bash app.sh lint    # kiểm tra cú pháp mọi tệp PHP
 ```
 
