@@ -142,8 +142,11 @@ ALTER TABLE stock_movements ADD CONSTRAINT stock_movements_ownership_check
     CHECK (ownership IN ('COMPANY_OWNED','SOLD','CONSIGNMENT'));
 ALTER TABLE stock_movements ALTER COLUMN warehouse_id DROP NOT NULL;
 ALTER TABLE stock_movements DROP CONSTRAINT IF EXISTS stock_movements_voucher_id_warehouse_id_batch_id_key;
-CREATE UNIQUE INDEX IF NOT EXISTS uq_stock_movement_event
-    ON stock_movements(voucher_id, COALESCE(warehouse_id,0), COALESCE(sales_point_id,0), batch_id);
+-- Dòng tại kho: mỗi chứng từ/kho/lô một dòng. Dòng tại điểm bán được nối thêm
+-- theo từng lần nhận, nên không ràng buộc duy nhất (xem migrations/003).
+DROP INDEX IF EXISTS uq_stock_movement_event;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_stock_movement_warehouse_event
+    ON stock_movements(voucher_id, warehouse_id, batch_id) WHERE sales_point_id IS NULL;
 CREATE INDEX IF NOT EXISTS idx_movements_sales_point ON stock_movements(sales_point_id, item_id, batch_id);
 CREATE INDEX IF NOT EXISTS idx_movements_history_lookup ON stock_movements(warehouse_id, batch_id, occurred_at, id);
 CREATE INDEX IF NOT EXISTS idx_sales_orders_scope ON sales_orders(sales_point_id, warehouse_id, status);

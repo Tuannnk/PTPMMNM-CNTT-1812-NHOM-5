@@ -220,6 +220,12 @@ Nếu trang lịch sử báo thiếu cột `stock_counts.closed_at`, cập nhậ
 psql -h 127.0.0.1 -U ptpmmnm_cntt_1812_nhom_5 -d ptpmmnm_cntt_1812_nhom_5 -f database/migrations/002_stock_count_closed_at.sql
 ```
 
+Database đã chạy migration chuỗi cung ứng trước đây cần chạy thêm migration để mỗi lần điểm bán nhận hàng được ghi thành dòng phát sinh riêng (sổ chỉ nối thêm):
+
+```bash
+psql -h 127.0.0.1 -U ptpmmnm_cntt_1812_nhom_5 -d ptpmmnm_cntt_1812_nhom_5 -f database/migrations/003_sales_receipt_append_only.sql
+```
+
 Migration tạo kho tổng `CENTRAL-01`, chuyển ba kho cũ thành `REGIONAL` trực thuộc kho tổng, tạo nhà cung cấp, điểm bán, đơn/giao phân phối và mở rộng sổ phát sinh. Migration không di chuyển tồn, không nạp dữ liệu mẫu và có thể chạy lặp lại. Hãy backup và kiểm tra preflight trước khi chạy trên database có dữ liệu thật.
 
 Từ thư mục dự án, cấu hình kết nối ứng dụng:

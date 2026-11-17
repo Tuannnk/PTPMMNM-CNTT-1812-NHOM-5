@@ -205,9 +205,7 @@ final class SalesOrderService
             $voucherQuery->execute(['code' => $delivery['code']]);
             $voucherId = $voucherQuery->fetchColumn();
             if ($voucherId === false) throw new DomainException('DELIVERY_STATE_INVALID');
-            $findMovement = $db->prepare('SELECT id FROM stock_movements WHERE voucher_id=:voucher AND sales_point_id=:point AND batch_id=:batch FOR UPDATE');
-            $insertMovement = $db->prepare("INSERT INTO stock_movements(voucher_id,sales_point_id,item_id,batch_id,qty,sales_delivery_id,ownership) VALUES(:voucher,:point,:item,:batch,:qty,:delivery,'COMPANY_OWNED')");
-            $increaseMovement = $db->prepare('UPDATE stock_movements SET qty=qty+:qty WHERE id=:id');
+            $insertMovement = $db->prepare("INSERT INTO stock_movements(voucher_id,sales_point_id,item_id,batch_id,qty,sales_delivery_id,ownership,occurred_at) VALUES(:voucher,:point,:item,:batch,:qty,:delivery,'COMPANY_OWNED',clock_timestamp())");
             $updateLine = $db->prepare('UPDATE sales_delivery_lines SET received_qty=:qty,shortage_qty=:shortage WHERE id=:id');
             $complete = true;
             foreach ($lines as $line) {
@@ -219,13 +217,8 @@ final class SalesOrderService
                 if ($qty < $previous) throw new DomainException('RECEIVED_QTY_DECREASE');
                 $delta = $qty - $previous;
                 if ($delta > 0) {
-                    $findMovement->execute(['voucher' => $voucherId, 'point' => $delivery['sales_point_id'], 'batch' => $batch]);
-                    $movementId = $findMovement->fetchColumn();
-                    if ($movementId === false) {
-                        $insertMovement->execute(['voucher' => $voucherId, 'point' => $delivery['sales_point_id'], 'item' => $line['item_id'], 'batch' => $batch, 'qty' => $delta, 'delivery' => $deliveryId]);
-                    } else {
-                        $increaseMovement->execute(['qty' => $delta, 'id' => $movementId]);
-                    }
+                    // Sổ chỉ nối thêm: mỗi lần nhận thêm là một dòng mới với thời điểm riêng.
+                    $insertMovement->execute(['voucher' => $voucherId, 'point' => $delivery['sales_point_id'], 'item' => $line['item_id'], 'batch' => $batch, 'qty' => $delta, 'delivery' => $deliveryId]);
                 }
                 $updateLine->execute(['qty' => $qty, 'shortage' => (int)$line['shipped_qty'] - $qty, 'id' => $line['id']]);
                 if ($qty !== (int)$line['shipped_qty']) $complete = false;
