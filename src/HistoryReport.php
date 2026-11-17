@@ -144,14 +144,16 @@ final class HistoryReport
         if ($filters['item_id'] !== null) { $conditions[]='cl.item_id=:count_item'; $params['count_item']=$filters['item_id']; }
         if ($filters['batch_id'] !== null) { $conditions[]='cl.batch_id=:count_batch'; $params['count_batch']=$filters['batch_id']; }
         $sql = "WITH latest AS (
-            SELECT DISTINCT ON (c.warehouse_id,cl.batch_id) c.warehouse_id,cl.batch_id,cl.actual_qty,c.closed_at
+            SELECT DISTINCT ON (c.warehouse_id,cl.batch_id) c.warehouse_id,cl.batch_id,cl.actual_qty,c.closed_at,c.adjust_voucher_id
             FROM stock_counts c JOIN stock_count_lines cl ON cl.count_id=c.id
             WHERE " . implode(' AND ', $conditions) . "
             ORDER BY c.warehouse_id,cl.batch_id,c.closed_at DESC,c.id DESC
         ), comparison AS (
             SELECT l.warehouse_id,l.batch_id,l.actual_qty,
                 COALESCE(SUM(m.qty),0) AS ledger_balance,
-                COALESCE(SUM(m.qty) FILTER (WHERE m.occurred_at>l.closed_at),0) AS after_count
+                -- Điều chỉnh của chính đợt kiểm kê được duyệt sau khi chốt, nên không tính là phát sinh sau kiểm kê.
+                COALESCE(SUM(m.qty) FILTER (WHERE m.occurred_at>l.closed_at
+                    AND m.voucher_id IS DISTINCT FROM l.adjust_voucher_id),0) AS after_count
             FROM latest l LEFT JOIN stock_movements m
                 ON m.warehouse_id=l.warehouse_id AND m.batch_id=l.batch_id
                 AND m.occurred_at < CAST(:end_exclusive AS date) + INTERVAL '1 day'

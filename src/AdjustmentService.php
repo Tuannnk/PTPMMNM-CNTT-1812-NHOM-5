@@ -78,6 +78,21 @@ final class AdjustmentService
         }
     }
 
+    /**
+     * Dòng điều chỉnh chờ ghi sổ: phiếu sửa chứng từ dùng adjustment_lines;
+     * phiếu từ đợt kiểm kê dùng voucher_lines, kho là kho của phiếu.
+     */
+    private static function pendingLines(PDO $db, array $voucher): array
+    {
+        $lq = $db->prepare('SELECT warehouse_id,item_id,batch_id,qty FROM adjustment_lines WHERE voucher_id=:id ORDER BY warehouse_id,batch_id,id');
+        $lq->execute(['id'=>$voucher['id']]);
+        $lines = $lq->fetchAll();
+        if ($lines) return $lines;
+        $lq = $db->prepare('SELECT CAST(:warehouse AS bigint) AS warehouse_id,item_id,batch_id,qty FROM voucher_lines WHERE voucher_id=:id ORDER BY batch_id,id');
+        $lq->execute(['id'=>$voucher['id'], 'warehouse'=>$voucher['warehouse_id']]);
+        return $lq->fetchAll();
+    }
+
     public static function confirm(int $voucherId, array $approver): array
     {
         $db = Database::connection();
@@ -88,10 +103,9 @@ final class AdjustmentService
             $v = $q->fetch();
             if (!$v || $v['type'] !== 'adjust') throw new DomainException('VOUCHER_NOT_FOUND');
             if ($v['status'] === 'confirmed') { $db->commit(); return ['confirmed'=>true,'already_confirmed'=>true,'negative'=>[]]; }
-            if ($v['status'] !== 'draft' || $approver['role'] !== 'approver') throw new DomainException('CONFIRM_FORBIDDEN');
-            $lq = $db->prepare('SELECT * FROM adjustment_lines WHERE voucher_id=:id ORDER BY warehouse_id,batch_id,id');
-            $lq->execute(['id'=>$voucherId]);
-            $lines = $lq->fetchAll();
+            if ($v['status'] !== 'draft' || $approver['role'] !== 'approver'
+                || (int)$v['created_by'] === (int)$approver['id']) throw new DomainException('CONFIRM_FORBIDDEN');
+            $lines = self::pendingLines($db, $v);
             if (!$lines) throw new DomainException('ADJUSTMENT_EMPTY');
             foreach ($lines as &$line) {
                 foreach (['warehouse_id','item_id','batch_id'] as $key) $line[$key] = (int)$line[$key];

@@ -87,7 +87,11 @@ function canAccessWarehouse(array $user, int $warehouseId): bool
 function canConfirm(array $user, array $voucher): bool
 {
     if ($user['role'] !== 'approver' || $voucher['status'] !== 'draft'
-        || !canAccessWarehouse($user, $voucher['warehouse_id'])) {
+        || !canAccessWarehouse($user, (int)$voucher['warehouse_id'])) {
+        return false;
+    }
+    // Người duyệt không tự duyệt chứng từ do chính mình lập (vd. điều chỉnh từ đợt kiểm kê họ chốt).
+    if ((int)($voucher['created_by'] ?? 0) === (int)$user['id']) {
         return false;
     }
     if ($voucher['type'] === 'transfer') {
@@ -100,6 +104,12 @@ function canConfirm(array $user, array $voucher): bool
         );
         $query->execute(['voucher_id' => $voucher['id']]);
         $warehouses = array_map('intval', $query->fetchAll(PDO::FETCH_COLUMN));
+        if ($warehouses === []) {
+            // Điều chỉnh từ đợt kiểm kê: dòng nằm ở voucher_lines, thuộc kho của phiếu.
+            $legacy = Database::connection()->prepare('SELECT 1 FROM voucher_lines WHERE voucher_id = :voucher_id LIMIT 1');
+            $legacy->execute(['voucher_id' => $voucher['id']]);
+            if ($legacy->fetchColumn()) $warehouses = [(int)$voucher['warehouse_id']];
+        }
         return $warehouses !== []
             && !array_filter($warehouses, fn($id) => !canAccessWarehouse($user, $id));
     }

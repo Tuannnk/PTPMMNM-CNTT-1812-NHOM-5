@@ -66,7 +66,7 @@ final class StockCountService
         }
     }
 
-    /** @return array{already_closed:bool,adjust_voucher_id:int} */
+    /** @return array{already_closed:bool,adjust_voucher_id:int,needs_approval:bool} */
     public static function close(int $countId, array $user, array $inputLines): array
     {
         if (!in_array($user['role'], ['counter', 'approver'], true)) {
@@ -85,7 +85,7 @@ final class StockCountService
             }
             if ($count['status'] === 'closed') {
                 $db->commit();
-                return ['already_closed' => true, 'adjust_voucher_id' => (int)$count['adjust_voucher_id']];
+                return ['already_closed' => true, 'adjust_voucher_id' => (int)$count['adjust_voucher_id'], 'needs_approval' => false];
             }
 
             InventoryGuard::lockWarehouses($db, [$count['warehouse_id']]);
@@ -158,10 +158,14 @@ final class StockCountService
                 }
             }
 
+            // Có chênh lệch: phiếu điều chỉnh chờ người duyệt, chưa ghi sổ (tách người kiểm và người duyệt).
+            // Không chênh lệch: phiếu rỗng đã xác nhận, chỉ để lưu vết đợt kiểm kê, không đổi tồn.
             $voucherId = (int)$db->query("SELECT nextval(pg_get_serial_sequence('vouchers','id'))")->fetchColumn();
-            $voucher = $db->prepare(
-                "INSERT INTO vouchers (id,code,type,status,warehouse_id,created_by,confirmed_by,confirmed_at,note) "
-                . "VALUES (:id,:code,'adjust','confirmed',:warehouse,:user,:user,now(),:note)"
+            $voucher = $db->prepare($differences
+                ? "INSERT INTO vouchers (id,code,type,status,warehouse_id,created_by,note) "
+                    . "VALUES (:id,:code,'adjust','draft',:warehouse,:user,:note)"
+                : "INSERT INTO vouchers (id,code,type,status,warehouse_id,created_by,confirmed_by,confirmed_at,note) "
+                    . "VALUES (:id,:code,'adjust','confirmed',:warehouse,:user,:user,now(),:note)"
             );
             $voucher->execute([
                 'id' => $voucherId,
@@ -175,10 +179,6 @@ final class StockCountService
                 'INSERT INTO voucher_lines (voucher_id,item_id,batch_id,qty,reason) '
                 . 'VALUES (:voucher,:item,:batch,:qty,:reason)'
             );
-            $movement = $db->prepare(
-                'INSERT INTO stock_movements (voucher_id,warehouse_id,item_id,batch_id,qty,occurred_at) '
-                . 'VALUES (:voucher,:warehouse,:item,:batch,:qty,clock_timestamp())'
-            );
             foreach ($differences as $difference) {
                 $params = [
                     'voucher' => $voucherId,
@@ -188,20 +188,13 @@ final class StockCountService
                     'reason' => $difference['reason'],
                 ];
                 $insertLine->execute($params);
-                $movement->execute([
-                    'voucher' => $voucherId,
-                    'warehouse' => $count['warehouse_id'],
-                    'item' => $difference['item_id'],
-                    'batch' => $difference['batch_id'],
-                    'qty' => $difference['qty'],
-                ]);
             }
 
             $close = $db->prepare("UPDATE stock_counts SET status='closed',adjust_voucher_id=:voucher,closed_at=clock_timestamp() WHERE id=:id AND status='counting'");
             $close->execute(['voucher' => $voucherId, 'id' => $countId]);
             if ($close->rowCount() !== 1) throw new DomainException('COUNT_STATE_CHANGED');
             $db->commit();
-            return ['already_closed' => false, 'adjust_voucher_id' => $voucherId];
+            return ['already_closed' => false, 'adjust_voucher_id' => $voucherId, 'needs_approval' => (bool)$differences];
         } catch (Throwable $error) {
             if ($db->inTransaction()) $db->rollBack();
             throw $error;
