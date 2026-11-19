@@ -7,6 +7,10 @@ $original = Store::find('vouchers', $originalId);
 if (!$original || $original['status'] !== 'confirmed') {
     http_response_code(404); exit('ADJUSTMENT_ORIGINAL_INVALID');
 }
+// Xuất phân phối gắn với đơn và biên bản giao nhận; điều chỉnh riêng sổ kho sẽ làm hai bên lệch nhau.
+if ($original['type'] === 'sale') {
+    http_response_code(409); exit('ADJUSTMENT_SALE_FORBIDDEN');
+}
 if ($original['type'] === 'transfer' && !in_array($original['transfer_state'] ?? '', ['partial','received'], true)) {
     http_response_code(409); exit('TRANSFER_NOT_RECEIVED');
 }

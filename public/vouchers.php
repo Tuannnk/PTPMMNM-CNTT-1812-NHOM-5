@@ -7,6 +7,8 @@ $type = field($_GET, 'type');
 $status = field($_GET, 'status');
 $warehouseId = intField($_GET, 'warehouse_id');
 $q = field($_GET, 'q');
+$supplierId = $user['role'] === 'sales_user' ? null : intField($_GET, 'supplier_id');
+$suppliers = $user['role'] === 'sales_user' ? [] : Store::all('suppliers');
 
 $page = intField($_GET, 'page') ?? 1;
 $limit = 100;
@@ -31,6 +33,7 @@ foreach (['type'=>$type,'status'=>$status] as $key=>$value) {
     if ($value !== '') { $conditions[] = "v.$key=:$key"; $params[$key]=$value; }
 }
 if ($warehouseId !== null) { $conditions[]='(v.warehouse_id=:filter_warehouse_source OR v.to_warehouse_id=:filter_warehouse_destination)'; $params['filter_warehouse_source']=$warehouseId; $params['filter_warehouse_destination']=$warehouseId; }
+if ($supplierId !== null) { $conditions[]='v.supplier_id=:filter_supplier'; $params['filter_supplier']=$supplierId; }
 if ($q !== '') { $conditions[]='(v.code ILIKE :search_code OR v.note ILIKE :search_note)'; $params['search_code']='%'.$q.'%'; $params['search_note']='%'.$q.'%'; }
 $where = implode(' AND ', $conditions);
 $db = Database::connection();
@@ -89,6 +92,14 @@ require __DIR__ . '/../templates/header.php';
       <?php endforeach; ?>
     </select>
   </label>
+  <?php if ($suppliers): ?><label>Nhà cung cấp
+    <select name="supplier_id">
+      <option value="">Tất cả</option>
+      <?php foreach ($suppliers as $s): ?>
+        <option value="<?= $s['id'] ?>" <?= $supplierId === $s['id'] ? 'selected' : '' ?>><?= e($s['code'] . ' · ' . $s['company_name']) ?></option>
+      <?php endforeach; ?>
+    </select>
+  </label><?php endif; ?>
   <button class="button">Lọc</button>
 </form>
 
@@ -106,13 +117,14 @@ require __DIR__ . '/../templates/header.php';
         <td><?= e(userName($v['created_by'])) ?></td>
         <td class="num"><?= e((string)$v['line_count']) ?></td>
         <td><?= voucherStatusBadge($v) ?></td>
+        <?php if ($user['role'] === 'approver'): ?><td><?php if (canConfirm($user, $v)): ?><a class="text-link" href="/voucher.php?id=<?= $v['id'] ?>">Mở để kiểm tra, duyệt hoặc từ chối</a><?php else: ?>—<?php endif; ?></td><?php endif; ?>
       </tr>
     <?php endforeach; ?>
   </tbody>
 </table>
 </div>
 <?php if (!$rows): ?><p class="empty">Không có chứng từ phù hợp bộ lọc.</p><?php endif; ?>
-<?php $totalPages=max(1,(int)ceil($totalRows/$limit)); if($totalPages>1): $pageQuery=['q'=>$q,'type'=>$type,'status'=>$status,'warehouse_id'=>$warehouseId]; ?>
+<?php $totalPages=max(1,(int)ceil($totalRows/$limit)); if($totalPages>1): $pageQuery=['q'=>$q,'type'=>$type,'status'=>$status,'warehouse_id'=>$warehouseId,'supplier_id'=>$supplierId]; ?>
 <nav class="actions" aria-label="Phân trang chứng từ">
   <?php if($page>1):?><a class="button button--ghost" href="/vouchers.php?<?=e(http_build_query($pageQuery+['page'=>$page-1]))?>">Trang trước</a><?php endif;?>
   <?php if($page<$totalPages):?><a class="button button--ghost" href="/vouchers.php?<?=e(http_build_query($pageQuery+['page'=>$page+1]))?>">Trang sau</a><?php endif;?>

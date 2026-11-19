@@ -69,7 +69,7 @@ require __DIR__ . '/../templates/header.php';
 <header class="page-head">
   <div>
     <h1><?= e($count['code']) ?> <?= $count['status'] === 'closed' ? '<span class="badge badge--ok">Đã chốt</span>' : '<span class="badge badge--wait">Đang kiểm</span>' ?></h1>
-    <p><?= e(warehouseName($count['warehouse_id'])) ?> · tạo <?= e(dateOnly($count['created_at'])) ?> bởi <?= e(userName($count['created_by'])) ?></p>
+    <p><?= e(warehouseName($count['warehouse_id'])) ?> · tạo <?= e(dateOnly($count['created_at'])) ?> bởi <?= e(userName($count['created_by'])) ?><?php if ($count['status'] === 'closed' && !empty($count['closed_at'])): ?> · chốt <?= e(dateOnly($count['closed_at'])) ?><?php endif; ?></p>
   </div>
   <?php if ($adjust): ?>
     <div class="actions"><a class="button button--ghost" href="/voucher.php?id=<?= $adjust['id'] ?>">Chứng từ điều chỉnh <?= e($adjust['code']) ?></a> <?= statusBadge($adjust['status']) ?></div>

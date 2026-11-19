@@ -57,6 +57,9 @@ const TRANSFER_STATE_LABELS = [
     'cancelled' => 'Đã hủy',
 ];
 
+const SALES_POINT_TYPES = ['AGENT' => 'Đại lý', 'STORE' => 'Cửa hàng', 'SUPERMARKET' => 'Siêu thị'];
+const WAREHOUSE_TYPES = ['CENTRAL' => 'Kho tổng', 'REGIONAL' => 'Kho địa điểm'];
+
 const SALES_ORDER_STATUS = [
     'DRAFT' => ['Nháp', 'badge'],
     'PENDING' => ['Chờ duyệt', 'badge badge--wait'],

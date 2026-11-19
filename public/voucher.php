@@ -240,6 +240,14 @@ if (!$movementRows && $voucher['type'] === 'transfer'
     $movementRows = $planned;
 }
 $ref = $voucher['ref_id'] ? Store::find('vouchers', $voucher['ref_id']) : null;
+$supplier = !empty($voucher['supplier_id']) ? Store::find('suppliers', (int)$voucher['supplier_id']) : null;
+$salesOrder = null;
+if ($voucher['type'] === 'sale') {
+    // Chứng từ xuất phân phối dùng chung mã với lần giao hàng tạo ra nó.
+    $orderQuery = Database::connection()->prepare('SELECT o.id,o.code,p.name point_name FROM sales_deliveries d JOIN sales_orders o ON o.id=d.order_id JOIN sales_points p ON p.id=o.sales_point_id WHERE d.code=:code LIMIT 1');
+    $orderQuery->execute(['code' => $voucher['code']]);
+    $salesOrder = $orderQuery->fetch() ?: null;
+}
 $relatedSupplements = $voucher['type'] === 'transfer'
     ? array_values(array_filter(Store::all('vouchers'), fn($candidate) => $candidate['ref_id'] === $voucher['id'] && $candidate['type'] === 'transfer'))
     : [];
@@ -314,6 +322,12 @@ require __DIR__ . '/../templates/header.php';
     <?php if ($voucher['type'] === 'transfer' && ($voucher['transfer_state'] ?? '') === 'cancelled'): ?>
       <div><dt>Người hủy phiếu</dt><dd><?= e(userName($voucher['transfer_cancelled_by'])) ?><?= $voucher['transfer_cancelled_at'] ? ' · ' . e(dateOnly($voucher['transfer_cancelled_at'])) : '' ?></dd></div>
       <div><dt>Lý do hủy</dt><dd><?= e($voucher['transfer_cancel_reason'] ?: 'Không có lý do được lưu.') ?></dd></div>
+    <?php endif; ?>
+    <?php if ($supplier): ?>
+      <div><dt>Nhà cung cấp</dt><dd><a class="text-link" href="/vouchers.php?supplier_id=<?= (int)$supplier['id'] ?>"><?= e($supplier['code'] . ' · ' . $supplier['company_name']) ?></a><?= $supplier['tax_code'] !== '' ? '<br><span class="muted">MST ' . e($supplier['tax_code']) . '</span>' : '' ?></dd></div>
+    <?php endif; ?>
+    <?php if ($salesOrder): ?>
+      <div><dt>Đơn phân phối</dt><dd><a class="text-link" href="/sales-order.php?id=<?= (int)$salesOrder['id'] ?>"><?= e($salesOrder['code']) ?></a> → <?= e($salesOrder['point_name']) ?></dd></div>
     <?php endif; ?>
     <?php if ($ref): ?><div><dt>Chứng từ gốc</dt><dd><a href="/voucher.php?id=<?= $ref['id'] ?>"><?= e($ref['code']) ?></a></dd></div><?php endif; ?>
   </dl>
@@ -490,7 +504,7 @@ require __DIR__ . '/../templates/header.php';
     </tbody>
   </table>
   </div>
-  <?php if ($voucher['status'] === 'confirmed' && $user['role']==='staff'
+  <?php if ($voucher['status'] === 'confirmed' && $user['role']==='staff' && $voucher['type'] !== 'sale'
       && ($voucher['type'] !== 'transfer' || in_array($voucher['transfer_state']??'', ['partial','received'], true))): ?>
     <p class="muted">Muốn sửa chứng từ đã ghi nhận, lập chứng từ điều chỉnh tham chiếu chứng từ này; lịch sử gốc được giữ nguyên.</p>
     <a class="button button--ghost" href="/adjust-new.php?ref_id=<?= $voucher['id'] ?>">Lập chứng từ điều chỉnh</a>

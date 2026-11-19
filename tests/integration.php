@@ -17,6 +17,8 @@ require __DIR__ . '/../src/TransferService.php';
 require __DIR__ . '/../src/AdjustmentService.php';
 require __DIR__ . '/../src/StockCountService.php';
 require_once __DIR__ . '/../src/HistoryReport.php';
+require __DIR__ . '/../src/SalesOrderService.php';
+require __DIR__ . '/../src/SalesPointService.php';
 
 /** PDO biến beginTransaction/commit/rollBack lồng nhau thành SAVEPOINT trong giao dịch ngoài. */
 final class SavepointPDO extends PDO
@@ -69,8 +71,8 @@ function errorCode(callable $fn): string
 function key48(): string { return bin2hex(random_bytes(24)); }
 
 try {
-    // Áp migration 004, 005 nếu database chưa chạy (DDL cũng nằm trong giao dịch, sẽ được rollback).
-    foreach (['004_transfer_shortage_resolution.sql', '005_voucher_reject_columns.sql'] as $migration) {
+    // Áp migration 004, 005, 006 nếu database chưa chạy (DDL cũng nằm trong giao dịch, sẽ được rollback).
+    foreach (['004_transfer_shortage_resolution.sql', '005_voucher_reject_columns.sql', '006_sales_order_cancel.sql'] as $migration) {
         $db->exec((string)preg_replace('/^\s*(BEGIN|COMMIT);\s*$/mi', '',
             (string)file_get_contents(__DIR__ . '/../database/migrations/' . $migration)));
     }
@@ -172,6 +174,79 @@ try {
     same(false, canConfirm($approver, $selfAdjust), 'người duyệt không tự duyệt điều chỉnh từ đợt mình chốt');
     same('CONFIRM_FORBIDDEN', errorCode(fn() => AdjustmentService::confirm((int)$selfAdjust['id'], $approver)),
         'service chặn tự duyệt điều chỉnh');
+
+    // Hủy đơn phân phối.
+    $salesUser = user('daily.hn');
+    $otherSalesUser = user('cuahang.dn');
+    $admin = user('quantri');
+    $pointId = (int)$db->query("SELECT sales_point_id FROM user_sales_points WHERE user_id={$salesUser['id']} ORDER BY sales_point_id LIMIT 1")->fetchColumn();
+    $pointWarehouse = (int)$db->query("SELECT primary_warehouse_id FROM sales_points WHERE id=$pointId")->fetchColumn();
+    $saleLot = $db->query("SELECT b.id,b.item_id FROM batches b JOIN stock_movements m ON m.batch_id=b.id AND m.warehouse_id=$pointWarehouse
+        WHERE b.active GROUP BY b.id,b.item_id HAVING SUM(m.qty)>=3 ORDER BY b.id LIMIT 1")->fetch();
+    if (!$saleLot) throw new RuntimeException('Kho phụ trách điểm bán cần một lô có tồn >= 3');
+    $newOrder = fn() => SalesOrderService::createDraft($salesUser, $pointId, $pointWarehouse,
+        [['batch_id' => (int)$saleLot['id'], 'item_id' => (int)$saleLot['item_id'], 'qty' => 1]], bin2hex(random_bytes(32)));
+    $orderRow = function (int $id) use ($db): array { return $db->query("SELECT * FROM sales_orders WHERE id=$id")->fetch(); };
+
+    $order1 = $newOrder();
+    same('ORDER_CANCEL_REASON_REQUIRED', errorCode(fn() => SalesOrderService::cancel($salesUser, $order1, '  ')), 'hủy đơn: bắt buộc lý do');
+    same('ORDER_CANCEL_FORBIDDEN', errorCode(fn() => SalesOrderService::cancel($otherSalesUser, $order1, 'không phải điểm bán của tôi')),
+        'hủy đơn: điểm bán khác không hủy được');
+    SalesOrderService::cancel($salesUser, $order1, 'đặt nhầm');
+    $cancelled = $orderRow($order1);
+    same(['CANCELLED', 'đặt nhầm', (int)$salesUser['id']], [$cancelled['status'], $cancelled['cancel_reason'], (int)$cancelled['cancelled_by']],
+        'hủy đơn: điểm bán hủy đơn chờ duyệt, lưu lý do và người hủy');
+    same('ORDER_STATE_INVALID', errorCode(fn() => SalesOrderService::cancel($admin, $order1, 'hủy lần hai')),
+        'hủy đơn: hủy lại đơn đã hủy báo trạng thái đã thay đổi');
+    same('ORDER_CANCEL_FORBIDDEN', errorCode(fn() => SalesOrderService::cancel($otherSalesUser, $order1, 'x')),
+        'hủy đơn: điểm bán khác vẫn báo không có quyền dù đơn đã hủy');
+
+    $order2 = $newOrder();
+    SalesOrderService::approve($admin, $order2);
+    same('ORDER_ALREADY_APPROVED', errorCode(fn() => SalesOrderService::cancel($salesUser, $order2, 'muộn')), 'hủy đơn: điểm bán không hủy đơn đã duyệt');
+    SalesOrderService::dispatch($admin, $order2, [['batch_id' => (int)$saleLot['id'], 'qty' => 1]], bin2hex(random_bytes(32)));
+    same('ORDER_STATE_INVALID', errorCode(fn() => SalesOrderService::cancel($admin, $order2, 'đã xuất')), 'hủy đơn: không hủy đơn đang giao');
+    $saleVoucher = (int)$db->query("SELECT v.id FROM vouchers v JOIN sales_deliveries d ON d.code=v.code WHERE v.type='sale' AND d.order_id=$order2")->fetchColumn();
+    $saleMovement = (int)$db->query("SELECT id FROM stock_movements WHERE voucher_id=$saleVoucher ORDER BY id LIMIT 1")->fetchColumn();
+    $pointStaff = null;
+    foreach (Store::all('users') as $u) if ($u['role'] === 'staff' && $u['active'] && in_array($pointWarehouse, $u['warehouses'], true)) { $pointStaff = $u; break; }
+    if ($pointStaff === null) throw new RuntimeException('Cần một nhân viên kho phụ trách kho của điểm bán');
+    same('ADJUSTMENT_SALE_FORBIDDEN', errorCode(fn() => AdjustmentService::createDraft($saleVoucher,
+        [['ref_movement_id' => $saleMovement, 'delta' => 1, 'reason' => 'thử']], $pointStaff, key48())),
+        'điều chỉnh: chặn lập điều chỉnh cho chứng từ xuất phân phối');
+
+    $order3 = $newOrder();
+    SalesOrderService::approve($admin, $order3);
+    SalesOrderService::cancel($admin, $order3, 'kho hết xe');
+    same('CANCELLED', $orderRow($order3)['status'], 'hủy đơn: quản trị hủy đơn đã duyệt chưa xuất');
+
+    // Lưu điểm bán: nhiều kho giao, giữ email và ghi chú.
+    $point = $db->query("SELECT * FROM sales_points WHERE id=$pointId")->fetch();
+    $otherWarehouse = (int)$db->query("SELECT id FROM warehouses WHERE active AND id<>$pointWarehouse ORDER BY id LIMIT 1")->fetchColumn();
+    $form = ['code' => $point['code'], 'name' => $point['name'], 'point_type' => $point['point_type'], 'primary_warehouse_id' => $pointWarehouse,
+        'address' => $point['address'], 'contact_name' => $point['contact_name'], 'phone' => $point['phone'],
+        'email' => 'lienhe@diemban.example', 'note' => 'ghi chú giữ lại', 'active' => 'on', 'route_warehouse_ids' => [(string)$otherWarehouse]];
+    SalesPointService::save($admin, $form, $pointId);
+    $routes = $db->query("SELECT warehouse_id,is_primary FROM sales_point_warehouses WHERE sales_point_id=$pointId ORDER BY is_primary DESC")->fetchAll();
+    same([[$pointWarehouse, true], [$otherWarehouse, false]], array_map(fn($r) => [(int)$r['warehouse_id'], (bool)$r['is_primary']], $routes),
+        'điểm bán: lưu kho chính và kho giao thêm');
+    $saved = $db->query("SELECT email,note FROM sales_points WHERE id=$pointId")->fetch();
+    same(['lienhe@diemban.example', 'ghi chú giữ lại'], [$saved['email'], $saved['note']], 'điểm bán: lưu email và ghi chú từ form');
+    same('SALES_ROUTE_INVALID', errorCode(fn() => SalesPointService::save($admin, ['route_warehouse_ids' => ['999999']] + $form, $pointId)),
+        'điểm bán: chặn kho giao không tồn tại');
+
+    // Kho giao thêm ngừng hoạt động: tuyến đang có được giữ khi lưu lại, nhưng không thêm mới được.
+    $thirdWarehouse = (int)$db->query("SELECT id FROM warehouses WHERE active AND id NOT IN ($pointWarehouse,$otherWarehouse) ORDER BY id LIMIT 1")->fetchColumn();
+    $db->exec("UPDATE warehouses SET active=false WHERE id IN ($otherWarehouse,$thirdWarehouse)");
+    (new ReflectionProperty(Store::class, 'cache'))->setValue(null, []);
+    SalesPointService::save($admin, $form, $pointId);
+    same(2, (int)$db->query("SELECT count(*) FROM sales_point_warehouses WHERE sales_point_id=$pointId")->fetchColumn(),
+        'điểm bán: lưu lại vẫn giữ tuyến tới kho đã ngừng hoạt động');
+    same('SALES_ROUTE_INACTIVE', errorCode(fn() => SalesPointService::save($admin,
+        ['route_warehouse_ids' => [(string)$otherWarehouse, (string)$thirdWarehouse]] + $form, $pointId)),
+        'điểm bán: không thêm tuyến mới tới kho đã ngừng hoạt động');
+    $db->exec("UPDATE warehouses SET active=true WHERE id IN ($otherWarehouse,$thirdWarehouse)");
+    (new ReflectionProperty(Store::class, 'cache'))->setValue(null, []);
 } catch (Throwable $e) {
     $GLOBALS['failed']++;
     echo 'LỖI ' . get_class($e) . ': ' . $e->getMessage() . "\n" . $e->getTraceAsString() . "\n";

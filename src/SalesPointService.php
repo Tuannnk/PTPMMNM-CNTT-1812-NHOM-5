@@ -11,17 +11,35 @@ final class SalesPointService
         $warehouseRecord=Store::find('warehouses',$warehouse);
         if (!preg_match('/^[A-Z0-9][A-Z0-9_-]{1,39}$/',$code)||$name===''||!in_array($type,['AGENT','STORE','SUPERMARKET'],true)
             ||!$warehouseRecord||!$warehouseRecord['active']||($actor['role']!=='admin'&&!canAccessWarehouse($actor,$warehouse))) throw new DomainException('SALES_POINT_INVALID');
+        // Kho giao thêm (ngoài kho phụ trách chính): điểm bán có thể nhận đơn từ các kho này.
         $db=Database::connection();
+        // Tuyến đang có được giữ lại kể cả khi kho đã ngừng hoạt động; chỉ tuyến mới mới phải là kho đang hoạt động.
+        $existingRoutes=[];
+        if ($id!==null) {
+            $existing=$db->prepare('SELECT warehouse_id FROM sales_point_warehouses WHERE sales_point_id=:point AND NOT is_primary');
+            $existing->execute(['point'=>$id]);
+            $existingRoutes=array_fill_keys(array_map('intval',$existing->fetchAll(PDO::FETCH_COLUMN)),true);
+        }
+        $routes=[];
+        foreach ((array)($data['route_warehouse_ids']??[]) as $raw) {
+            $routeId=(int)$raw;
+            if ($routeId<=0||$routeId===$warehouse) continue;
+            $routeRecord=Store::find('warehouses',$routeId);
+            if (!$routeRecord||($actor['role']!=='admin'&&!canAccessWarehouse($actor,$routeId))) throw new DomainException('SALES_ROUTE_INVALID');
+            if (!$routeRecord['active']&&!isset($existingRoutes[$routeId])) throw new DomainException('SALES_ROUTE_INACTIVE');
+            $routes[$routeId]=true;
+        }
         $db->beginTransaction();
         try {
             $p=['code'=>$code,'name'=>$name,'point_type'=>$type,'address'=>trim((string)($data['address']??'')),'contact_name'=>trim((string)($data['contact_name']??'')),'phone'=>trim((string)($data['phone']??'')),'email'=>trim((string)($data['email']??'')),'warehouse'=>$warehouse,'active'=>!empty($data['active'])?'true':'false','note'=>trim((string)($data['note']??''))];
             if($id===null){$q=$db->prepare('INSERT INTO sales_points (code,name,point_type,address,contact_name,phone,email,primary_warehouse_id,active,note) VALUES (:code,:name,:point_type,:address,:contact_name,:phone,:email,:warehouse,:active,:note) RETURNING id');}
             else{$p['id']=$id;$q=$db->prepare('UPDATE sales_points SET code=:code,name=:name,point_type=:point_type,address=:address,contact_name=:contact_name,phone=:phone,email=:email,primary_warehouse_id=:warehouse,active=:active,note=:note WHERE id=:id RETURNING id');}
             $q->execute($p);$saved=$q->fetchColumn();if($saved===false)throw new DomainException('SALES_POINT_NOT_FOUND');
-            // This form supports one responsible warehouse; replace old route mappings.
+            // Thay toàn bộ tuyến giao: một kho chính và các kho giao thêm đã chọn trên form.
             $db->prepare('DELETE FROM sales_point_warehouses WHERE sales_point_id=:point')->execute(['point'=>$saved]);
-            $link=$db->prepare('INSERT INTO sales_point_warehouses (sales_point_id,warehouse_id,is_primary) VALUES (:point,:warehouse,true)');
-            $link->execute(['point'=>$saved,'warehouse'=>$warehouse]);
+            $link=$db->prepare('INSERT INTO sales_point_warehouses (sales_point_id,warehouse_id,is_primary) VALUES (:point,:warehouse,:primary)');
+            $link->execute(['point'=>$saved,'warehouse'=>$warehouse,'primary'=>'true']);
+            foreach (array_keys($routes) as $routeId) $link->execute(['point'=>$saved,'warehouse'=>$routeId,'primary'=>'false']);
             $db->commit();
             return (int)$saved;
         } catch (Throwable $e) {

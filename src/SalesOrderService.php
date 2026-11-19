@@ -250,6 +250,55 @@ final class SalesOrderService
         }
     }
 
+    /**
+     * Hủy đơn khi chưa có hàng nào được xuất. Người duyệt/quản lý hủy được đơn chờ duyệt hoặc đã duyệt
+     * ở kho mình phụ trách; người dùng điểm bán chỉ hủy được đơn còn chờ duyệt của điểm bán mình.
+     */
+    public static function cancel(array $actor, int $orderId, string $reason): void
+    {
+        $reason = trim($reason);
+        if ($reason === '' || !textFits($reason, 255)) throw new DomainException('ORDER_CANCEL_REASON_REQUIRED');
+        $db = Database::connection();
+        $db->beginTransaction();
+        try {
+            $q = $db->prepare('SELECT * FROM sales_orders WHERE id=:id FOR UPDATE');
+            $q->execute(['id' => $orderId]);
+            $order = $q->fetch();
+            // Xét quyền trước, trạng thái sau: để báo đúng "đơn đã thay đổi" thay vì "không có quyền".
+            if (!$order || !self::hasCancelScope($actor, $order)) throw new DomainException('ORDER_CANCEL_FORBIDDEN');
+            if (!in_array($order['status'], ['PENDING', 'APPROVED'], true)) throw new DomainException('ORDER_STATE_INVALID');
+            if ($actor['role'] === 'sales_user' && $order['status'] !== 'PENDING') throw new DomainException('ORDER_ALREADY_APPROVED');
+            $shipped = $db->prepare('SELECT COUNT(*) FROM sales_deliveries WHERE order_id=:id');
+            $shipped->execute(['id' => $orderId]);
+            if ((int)$shipped->fetchColumn() > 0) throw new DomainException('ORDER_ALREADY_SHIPPED');
+            $update = $db->prepare("UPDATE sales_orders SET status='CANCELLED',cancelled_by=:user,cancelled_at=now(),cancel_reason=:reason
+                WHERE id=:id AND status IN ('PENDING','APPROVED')");
+            $update->execute(['user' => $actor['id'], 'reason' => $reason, 'id' => $orderId]);
+            if ($update->rowCount() !== 1) throw new DomainException('ORDER_STATE_INVALID');
+            $db->commit();
+        } catch (Throwable $e) {
+            if ($db->inTransaction()) $db->rollBack();
+            throw $e;
+        }
+    }
+
+    /** Có hiện nút hủy không: đủ quyền và đơn đang ở trạng thái hủy được (chưa xét đơn đã xuất hàng hay chưa). */
+    public static function canCancel(array $actor, array $order): bool
+    {
+        $cancellable = $actor['role'] === 'sales_user' ? ['PENDING'] : ['PENDING', 'APPROVED'];
+        return in_array($order['status'], $cancellable, true) && self::hasCancelScope($actor, $order);
+    }
+
+    /** Vai trò và phạm vi được hủy đơn, không phụ thuộc trạng thái đơn. */
+    private static function hasCancelScope(array $actor, array $order): bool
+    {
+        if ($actor['role'] === 'sales_user') {
+            return self::userPoint((int)$actor['id'], (int)$order['sales_point_id']);
+        }
+        return in_array($actor['role'], ['approver', 'admin', 'central_manager', 'regional_manager'], true)
+            && canAccessWarehouse($actor, (int)$order['warehouse_id']);
+    }
+
     public static function canConfirmReceipt(array $actor, int $pointId): bool
     {
         return $actor['role'] === 'sales_user' && self::userPoint((int)$actor['id'], $pointId);

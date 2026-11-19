@@ -126,6 +126,9 @@ CREATE TABLE IF NOT EXISTS sales_delivery_lines (
     FOREIGN KEY (batch_id) REFERENCES batches(id),
     UNIQUE (delivery_id,order_line_id)
 );
+ALTER TABLE sales_orders ADD COLUMN IF NOT EXISTS cancelled_by bigint REFERENCES users(id);
+ALTER TABLE sales_orders ADD COLUMN IF NOT EXISTS cancelled_at timestamptz;
+ALTER TABLE sales_orders ADD COLUMN IF NOT EXISTS cancel_reason text NOT NULL DEFAULT '';
 
 ALTER TABLE vouchers ADD COLUMN IF NOT EXISTS supplier_id bigint REFERENCES suppliers(id);
 ALTER TABLE vouchers DROP CONSTRAINT IF EXISTS vouchers_type_check;

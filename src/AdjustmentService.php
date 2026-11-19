@@ -18,6 +18,10 @@ final class AdjustmentService
             if (!$original || $original['status'] !== 'confirmed') {
                 throw new DomainException('ADJUSTMENT_ORIGINAL_INVALID');
             }
+            // Xuất phân phối gắn với đơn và biên bản giao nhận; không điều chỉnh riêng sổ kho.
+            if ($original['type'] === 'sale') {
+                throw new DomainException('ADJUSTMENT_SALE_FORBIDDEN');
+            }
             $original['id'] = (int)$original['id'];
             $original['warehouse_id'] = (int)$original['warehouse_id'];
             if ($original['type'] === 'transfer') {

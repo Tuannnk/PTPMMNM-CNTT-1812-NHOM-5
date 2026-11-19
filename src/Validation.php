@@ -36,6 +36,15 @@ const ERROR_LABELS = [
     'RECEIVED_QTY_INVALID' => 'Số thực nhận không hợp lệ.',
     'RECEIVED_QTY_DECREASE' => 'Số thực nhận không thể thấp hơn số đã xác nhận trước đó.',
     'DELIVERY_NOT_FOUND' => 'Không tìm thấy lần giao hàng.',
+    'ORDER_CANCEL_REASON_REQUIRED' => 'Cần nhập lý do hủy đơn (tối đa 255 ký tự).',
+    'ORDER_CANCEL_FORBIDDEN' => 'Bạn không được hủy đơn phân phối này.',
+    'ORDER_ALREADY_SHIPPED' => 'Đơn đã xuất hàng nên không thể hủy.',
+    'ORDER_STATE_INVALID' => 'Trạng thái đơn đã thay đổi. Tải lại trang rồi thử lại.',
+    'ORDER_ALREADY_APPROVED' => 'Đơn đã được kho duyệt nên điểm bán không tự hủy được; liên hệ kho để hủy.',
+    'ADJUSTMENT_SALE_FORBIDDEN' => 'Không lập điều chỉnh cho chứng từ xuất phân phối; số liệu được ghi theo đơn và biên bản giao nhận.',
+    'SALES_ROUTE_INACTIVE' => 'Không thêm được tuyến giao tới kho đã ngừng hoạt động.',
+    'SALES_ROUTE_INVALID' => 'Kho giao thêm không hợp lệ hoặc bạn không phụ trách kho đó.',
+    'WAREHOUSE_PARENT_INVALID' => 'Kho tổng không được có kho cha; kho địa điểm phải chọn một kho tổng đang hoạt động làm kho cha.',
 ];
 
 /** Đếm theo ký tự UTF-8 (không cần mbstring); chuỗi sai UTF-8 bị từ chối. */
