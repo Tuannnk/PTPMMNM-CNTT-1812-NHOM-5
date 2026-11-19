@@ -220,6 +220,44 @@ final class Dashboard
         ];
     }
 
+    /**
+     * Tồn hiện có tại mọi kho và điểm bán đang hoạt động: số mặt hàng còn hàng, số lô còn hàng, tổng số lượng.
+     * Tính từ sổ phát sinh (số dư theo lô); chỉ đếm lô có số dư dương.
+     */
+    public static function stockByLocation(): array
+    {
+        return self::rows(
+            "WITH bal AS (
+                SELECT 'warehouse' AS kind, warehouse_id AS location_id, item_id, batch_id, SUM(qty) AS qty
+                FROM stock_movements WHERE warehouse_id IS NOT NULL GROUP BY warehouse_id, item_id, batch_id
+                UNION ALL
+                SELECT 'sales_point', sales_point_id, item_id, batch_id, SUM(qty)
+                FROM stock_movements WHERE sales_point_id IS NOT NULL GROUP BY sales_point_id, item_id, batch_id
+             ), loc AS (
+                SELECT 'warehouse' AS kind, id, code, name, type AS subtype,
+                       CASE WHEN type = 'CENTRAL' THEN 0 ELSE 1 END AS sort_group
+                FROM warehouses WHERE active
+                UNION ALL
+                SELECT 'sales_point', id, code, name, point_type, 2 FROM sales_points WHERE active
+             )
+             SELECT loc.kind, loc.id, loc.code, loc.name, loc.subtype,
+                    count(DISTINCT bal.item_id) FILTER (WHERE bal.qty > 0) AS items,
+                    count(*) FILTER (WHERE bal.qty > 0) AS batches,
+                    COALESCE(SUM(bal.qty) FILTER (WHERE bal.qty > 0), 0)::bigint AS qty
+             FROM loc LEFT JOIN bal ON bal.kind = loc.kind AND bal.location_id = loc.id
+             GROUP BY loc.kind, loc.id, loc.code, loc.name, loc.subtype, loc.sort_group
+             ORDER BY loc.sort_group, loc.code");
+    }
+
+    /** Tổng số mặt hàng khác nhau còn hàng ở ít nhất một kho hoặc điểm bán. */
+    public static function itemsInStockAnywhere(): int
+    {
+        return (int)Database::connection()->query(
+            "SELECT count(DISTINCT item_id) FROM (
+                SELECT item_id FROM stock_movements GROUP BY item_id, warehouse_id, sales_point_id, batch_id HAVING SUM(qty) > 0
+             ) s")->fetchColumn();
+    }
+
     /** Điểm bán liên kết với tài khoản điểm bán. */
     public static function userSalesPointIds(array $user): array
     {

@@ -8,6 +8,13 @@ if ($overview['users_without_scope']) $warnings[] = [$overview['users_without_sc
 if ($overview['items_without_batch']) $warnings[] = [$overview['items_without_batch'] . ' mặt hàng đang dùng chưa có lô nào', '/items.php'];
 if ($overview['expiring']) $warnings[] = [count($overview['expiring']) . ' lô còn tồn sẽ hết hạn trong 30 ngày', '#lo-sap-het-han'];
 
+$locationStock = Dashboard::stockByLocation();
+$itemsAnywhere = Dashboard::itemsInStockAnywhere();
+$locationTypes = [
+    'CENTRAL' => 'Kho tổng', 'REGIONAL' => 'Kho địa điểm',
+    'AGENT' => 'Đại lý', 'STORE' => 'Cửa hàng', 'SUPERMARKET' => 'Siêu thị',
+];
+
 $stockQuery = field($_GET, 'stock_q');
 $stockWarehouseId = intField($_GET, 'warehouse_id');
 $stockWarehouses = array_values(array_filter(Store::all('warehouses'), fn($w) => $w['active']));
@@ -34,6 +41,35 @@ if ($stockQuery !== '' || $stockWarehouseId !== null) {
   <?= dashStat('Nhà cung cấp', $overview['suppliers'], '/suppliers.php') ?>
   <?= dashStat('Điểm bán', $overview['sales_points'], '/sales-points.php') ?>
   <?= dashStat('Cảnh báo dữ liệu', count($warnings), '#canh-bao', $warnings ? 'warn' : 'ok') ?>
+</section>
+
+<section class="card" id="ton-theo-dia-diem">
+  <h2>Tồn kho theo kho và điểm bán</h2>
+  <p class="muted">Số mặt hàng, số lô và tổng số lượng đang có tại từng địa điểm, tính từ sổ phát sinh. Hàng đang trên đường vận chuyển chưa được tính vào địa điểm nào.</p>
+  <div class="table-wrap"><table class="table table--compact">
+    <thead><tr><th>Địa điểm</th><th>Loại</th><th class="num">Số mặt hàng</th><th class="num">Số lô</th><th class="num">Tổng số lượng</th><th></th></tr></thead>
+    <tbody>
+    <?php foreach ($locationStock as $loc):
+        $isWarehouse = $loc['kind'] === 'warehouse';
+        $href = $isWarehouse ? '/stock.php?warehouse_id=' . (int)$loc['id'] : '/sales-stock.php?sales_point_id=' . (int)$loc['id'];
+        $empty = (int)$loc['qty'] === 0; ?>
+      <tr>
+        <td><strong><?= e($loc['name']) ?></strong> <span class="muted"><?= e($loc['code']) ?></span></td>
+        <td><?= e($locationTypes[(string)$loc['subtype']] ?? ($isWarehouse ? 'Kho' : 'Điểm bán')) ?></td>
+        <td class="num <?= $empty ? 'muted' : '' ?>"><?= qty((int)$loc['items']) ?></td>
+        <td class="num <?= $empty ? 'muted' : '' ?>"><?= qty((int)$loc['batches']) ?></td>
+        <td class="num <?= $empty ? 'muted' : '' ?>"><?= qty((int)$loc['qty']) ?></td>
+        <td><a class="text-link" href="<?= e($href) ?>">Xem tồn</a></td>
+      </tr>
+    <?php endforeach; ?>
+    </tbody>
+    <tfoot><tr>
+      <th>Toàn hệ thống</th><th class="muted"><?= count($locationStock) ?> địa điểm</th>
+      <th class="num"><?= qty($itemsAnywhere) ?></th>
+      <th class="num"><?= qty(array_sum(array_map(fn($l) => (int)$l['batches'], $locationStock))) ?></th>
+      <th class="num"><?= qty(array_sum(array_map(fn($l) => (int)$l['qty'], $locationStock))) ?></th><th></th>
+    </tr></tfoot>
+  </table></div>
 </section>
 
 <div class="grid-2">
