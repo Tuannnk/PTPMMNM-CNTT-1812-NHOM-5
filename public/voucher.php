@@ -15,9 +15,11 @@ if ($voucher['type'] === 'transfer' ? !$canSeeSource && !$canSeeDestination : !$
 }
 
 $lines = Store::linesOf($voucher['id']);
-if ($voucher['type'] === 'adjust') {
+// Chứng từ điều chỉnh không có dòng (đợt kiểm kê không chênh lệch) xét quyền theo kho của chứng từ ở trên.
+$isEmptyAdjust = $voucher['type'] === 'adjust' && !$lines;
+if ($voucher['type'] === 'adjust' && !$isEmptyAdjust) {
     $lineWarehouses = array_unique(array_column($lines, 'warehouse_id'));
-    if (!$lineWarehouses || array_filter($lineWarehouses, fn($id) => !canAccessWarehouse($user, (int)$id))) forbid();
+    if (array_filter($lineWarehouses, fn($id) => !canAccessWarehouse($user, (int)$id))) forbid();
 }
 $items = Store::indexed('items');
 $batches = Store::indexed('batches');
@@ -319,6 +321,9 @@ require __DIR__ . '/../templates/header.php';
 
 <section class="card">
   <h2>Dòng hàng</h2>
+  <?php if ($isEmptyAdjust): ?>
+  <p class="empty">Đợt kiểm kê không có chênh lệch, không cần điều chỉnh tồn.</p>
+  <?php else: ?>
   <div class="table-wrap">
   <table class="table">
     <thead><tr><th>#</th><?php if ($voucher['type']==='adjust'): ?><th>Kho</th><?php endif; ?><th>Mã</th><th>Mặt hàng</th><th>Lô</th><th>ĐVT</th><th class="num"><?= $voucher['type']==='adjust'?'Delta':'Số lượng' ?></th><?php if ($voucher['type']==='adjust'): ?><th>Lý do</th><?php endif; ?><th class="num">Tồn hiện tại</th></tr></thead>
@@ -339,6 +344,7 @@ require __DIR__ . '/../templates/header.php';
     </tbody>
   </table>
   </div>
+  <?php endif; ?>
 </section>
 
 <?php if ($voucher['type'] === 'transfer'): ?>
@@ -457,6 +463,7 @@ require __DIR__ . '/../templates/header.php';
 </ul></section>
 <?php endif; ?>
 
+<?php if (!$isEmptyAdjust): ?>
 <section class="card">
   <h2><?= $voucher['status'] === 'rejected' || ($voucher['transfer_state'] ?? '') === 'cancelled'
       ? 'Phiếu đã từ chối/hủy — không ghi phát sinh'
@@ -489,4 +496,5 @@ require __DIR__ . '/../templates/header.php';
     <a class="button button--ghost" href="/adjust-new.php?ref_id=<?= $voucher['id'] ?>">Lập chứng từ điều chỉnh</a>
   <?php endif; ?>
 </section>
+<?php endif; ?>
 <?php require __DIR__ . '/../templates/footer.php'; ?>
